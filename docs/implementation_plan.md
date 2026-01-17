@@ -77,7 +77,7 @@ A controlled photo sharing app for privacy-conscious parents to share photos via
 
 **Technical:**
 - ✅ React Native Paper UI components
-- ✅ Node.js + Express backend
+- ✅ **Serverless Architecture** (Supabase Edge Functions)
 - ✅ Supabase (PostgreSQL + Auth + Storage)
 - ✅ Encryption keys stored in database
 - ✅ HTTPS/TLS for all communication
@@ -140,62 +140,41 @@ A controlled photo sharing app for privacy-conscious parents to share photos via
 
 ### Component Reusability Strategy
 
-**Strategy: Hybrid UI (Native-Feel iOS + Material Android)**
-We will use **React Native Paper** for Android to get perfect Material 3 support, but use **Custom Native-Like Components** on iOS. We will achieve this through **Wrapper Components**.
+**Strategy: React Native Paper Foundation**
+For MVP, we will prioritize development speed by using **React Native Paper directly** on all platforms. We will rely on **Platform-Aware Theming** to ensure it feels native enough on iOS without maintaining a complex abstraction layer.
 
 #### **UI Library Approach**
-- **Android**: React Native Paper (Material Design 3)
-- **iOS**: Custom styled components (Cupertino style) or unstyled Paper components with iOS theme
-- **Web**: React Native Paper (Material Design is standard on web)
-
-#### **Wrapper Component Pattern**
-We will not use `Button` or `TextInput` directly from libraries. Instead, we generate our own:
-```typescript
-// components/AppButton.tsx
-import { Platform, Pressable, Text, StyleSheet } from 'react-native';
-import { Button as PaperButton } from 'react-native-paper';
-
-export const AppButton = ({ children, onPress, mode = 'contained', ...props }) => {
-  // iOS: Native-style Pressable
-  if (Platform.OS === 'ios') {
-    return (
-      <Pressable 
-        style={({ pressed }) => [
-          styles.iosButton, 
-          mode === 'outlined' && styles.iosOutlined,
-          pressed && styles.iosPressed
-        ]} 
-        onPress={onPress}
-      >
-        <Text style={[styles.iosText, mode === 'outlined' && styles.iosTextOutlined]}>
-          {children}
-        </Text>
-      </Pressable>
-    );
-  }
-  // Android/Web: Material Design
-  return <PaperButton mode={mode} onPress={onPress} {...props}>{children}</PaperButton>;
-};
-```
+- **All Platforms**: React Native Paper (Material Design 3)
+- **Adaptation**: Use theme overrides for fonts and colors.
 
 #### **Theme Configuration** (`/packages/shared-components/theme`)
+We use `Platform.select` in the theme to handle the biggest "feel" differences (Fonts, Colors, Roundness) without custom components.
+
 ```typescript
 import { Platform } from 'react-native';
-import { MD3LightTheme } from 'react-native-paper';
+import { MD3LightTheme, configureFonts } from 'react-native-paper';
 
-const isIOS = Platform.OS === 'ios';
+const fontConfig = {
+  // Use San Francisco on iOS, Inter on Android
+  fontFamily: Platform.select({
+    ios: 'System',
+    default: 'Inter, sans-serif',
+  }),
+};
 
 export const theme = {
-  // Only inherit MD3 properties on Android/Web
-  ...(isIOS ? {} : MD3LightTheme),
+  ...MD3LightTheme,
+  fonts: configureFonts({ config: fontConfig }),
   colors: {
     ...MD3LightTheme.colors,
-    primary: isIOS ? '#007AFF' : '#6366F1', // iOS Blue vs Brand Indigo
-    background: isIOS ? '#F2F2F7' : '#FFFFFF', // iOS Grouped Background
-    surface: isIOS ? '#FFFFFF' : '#F9FAFB',
-    error: '#FF3B30', // iOS System Red
+    // iOS Blue vs Brand Indigo
+    primary: Platform.select({ ios: '#007AFF', default: '#6366F1' }),
+    // iOS uses lighter backgrounds
+    background: Platform.select({ ios: '#F2F2F7', default: '#FFFFFF' }),
+    surface: Platform.select({ ios: '#FFFFFF', default: '#F9FAFB' }),
   },
-  roundness: isIOS ? 10 : 20, // Tighter corners on iOS headers
+  // Tighter corners on iOS
+  roundness: Platform.select({ ios: 10, default: 20 }),
 };
 ```
 
@@ -287,7 +266,7 @@ const styles = StyleSheet.create({
 
 **Other Shared Components:**
 - `ExpirySelector` - Dropdown for expiration time
-- `FamilyRulesList` - Display family rules
+
 - `PhotoViewer` - Photo display with controls
 - `EmptyState` - Empty state illustrations
 - `ErrorMessage` - Error display
@@ -310,12 +289,7 @@ export interface SharedLink {
   createdAt: Date;
 }
 
-// types/FamilyRule.ts
-export interface FamilyRule {
-  id: string;
-  ruleText: string;
-  isTemplate: boolean;
-}
+
 
 // types/api.ts
 export interface CreateLinkResponse {
@@ -508,11 +482,11 @@ graph TB
     
     subgraph "Supabase Platform"
         I[(PostgreSQL + RLS)]
-        J[Storage Bucket]
+        J[Storage Bucket (Private)]
         K[Auth Provider]
         L[Edge Functions]
         L1[Cron: Cleanup]
-        L2[RPC: Revoke Link]
+        L2[Gateway: Get Link]
     end
     
     subgraph "Recipient Experience"
@@ -527,15 +501,13 @@ graph TB
     C --> J
     D --> I
     
-    M --> I
-    M --> J
+    M --> L2
+    L2 --> I
+    L2 --> J
     M --> N
     
     L1 --> I
     L1 --> J
-    
-    I -.-> |RLS Policy| C
-    I -.-> |RLS Policy| M
 ```
 
 ---
@@ -554,16 +526,7 @@ CREATE TABLE users (
 );
 ```
 
-#### **family_rules**
-```sql
-CREATE TABLE family_rules (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-  rule_text TEXT NOT NULL,
-  is_template BOOLEAN DEFAULT false,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-```
+
 
 #### **shared_links**
 ```sql
@@ -592,16 +555,17 @@ CREATE TABLE shared_links (
   view_count INTEGER DEFAULT 0,
   last_accessed_at TIMESTAMP
 );
-```
 
-#### **link_rules** (Many-to-many: links can have multiple rules)
-```sql
-CREATE TABLE link_rules (
-  link_id UUID REFERENCES shared_links(id) ON DELETE CASCADE,
-  rule_id UUID REFERENCES family_rules(id) ON DELETE CASCADE,
-  PRIMARY KEY (link_id, rule_id)
+-- 🔐 KEY STORAGE (STRICT SECURITY)
+-- Separate table to prevent accidental exposure via SELECT *
+CREATE TABLE link_secrets (
+  link_id UUID PRIMARY KEY REFERENCES shared_links(id) ON DELETE CASCADE,
+  encryption_key TEXT NOT NULL, -- Stored here, accessible ONLY by Server/Edge Functions
+  created_at TIMESTAMP DEFAULT NOW()
 );
 ```
+
+
 
 #### **access_logs**
 ```sql
@@ -612,7 +576,7 @@ CREATE TABLE access_logs (
   -- Device tracking (post-MVP)
   device_fingerprint TEXT,
   user_agent TEXT,
-  anonymized_ip TEXT, -- Last octet removed (e.g. 192.168.1.xxx) for privacy
+  ip_hash TEXT, -- SHA-256 hash of IP + Daily Salt (No raw IP stored)
   
   -- Event data
   accessed_at TIMESTAMP DEFAULT NOW(),
@@ -627,40 +591,43 @@ CREATE TABLE access_logs (
 #### **Database & Security** (`/supabase`)
 
 ##### **Row Level Security (RLS) Policies**
-Since we are removing the middleware backend, **RLS is our primary security layer**.
 
 **`shared_links` Policies:**
-1.  **INSERT**: Authenticated users can insert rows where `user_id = auth.uid()`.
-2.  **SELECT (Owner)**: Authenticated users can view rows where `user_id = auth.uid()`.
-3.  **SELECT (Recipient)**: Public/Anonymous users can view rows where:
-    - `short_code` matches input
-    - `is_revoked` is false
-    - `expires_at` is NULL or > NOW()
-4.  **UPDATE**: Authenticated users can update rows where `user_id = auth.uid()`.
+1.  **INSERT/UPDATE/SELECT (Owner)**: Authenticated users can access their own rows (`user_id = auth.uid()`).
+2.  **Public Access**: **DISABLED**. No public `SELECT` allowed.
+
+**`link_secrets` Policies (CRITICAL):**
+1.  **ALL OPERATIONS**: **DISABLED** for standard users (Owner & Public).
+    -   `CREATE POLICY no_direct_access ON link_secrets FOR ALL USING (false);`
+    -   Keys are **strictly accessible** only via Edge Functions (Service Role).
 
 **`storage` Policies:**
-1.  **UPLOAD**: Authenticated users can upload to `/{uid}/*`.
-2.  **DOWNLOAD (Owner)**: Authenticated users can download from `/{uid}/*`.
-3.  **DOWNLOAD (Recipient)**: Public users can download if they have a valid `short_code` mapped to that file (requires a specialized PostgreSQL function or Edge Function to validate access before signing URL, or relying on unguessable filenames + short-lived signed URLs generated by Edge Function).
-
-> **Note**: For MVP, we will use **Signed URLs** generated by the Mobile App (for owner) or an implementation pattern where the `shared_links` table contains the public path if valid.
+1.  **UPLOAD/DELETE (Owner)**: Authenticated users can access `/{uid}/*`.
+2.  **DOWNLOAD**: **DISABLED**. Storage is **Private**. Access is only granted via Signed URLs generated by Edge Functions.
 
 ##### **Edge Functions** (`/supabase/functions`)
 
-**1. `process-expiration` (Scheduled Cron)**
+**1. `get-link` (Recipient Gateway)**
+- **Role**: Secure Gatekeeper for public access.
+- **Input**: `shortCode`
+- **Logic**:
+  1.  Query `shared_links` (using Service Role) to find link.
+  2.  Check `is_revoked`, `expires_at`.
+  3.  **Fetch Key**: Query `link_secrets` (using Service Role).
+  4.  Generate Signed URL for storage.
+  5.  **Return**: `{ signedUrl, key, metadata }`.
+
+**2. `process-expiration` (Scheduled Cron)**
 - Runs every hour.
 - Deletes files from Storage for expired links.
 - Updates `status` in database.
-
-**2. `get-link-details` (Optional)**
-- If RLS logic gets too complex for "Recipient View", we can wrap the fetch in an Edge Function that validates expiry/revocation and returns the signed Storage URL + metadata.
 
 ---
 
 #### **Backend Logic (Supabase)**
 
 ##### [NEW] [supabase/migrations/001_initial_schema.sql](file:///Users/ju/Documents/Projects/2026/sharing-app/supabase/migrations/001_initial_schema.sql)
-- Initial DDL for `users`, `shared_links`, `family_rules`.
+- Initial DDL for `users`, `shared_links`.
 - Enable RLS on all tables.
 
 ##### [NEW] [supabase/migrations/002_security_policies.sql](file:///Users/ju/Documents/Projects/2026/sharing-app/supabase/migrations/002_security_policies.sql)
@@ -686,8 +653,7 @@ Welcome screen with value proposition and visual examples.
 ##### [NEW] [screens/AuthScreen.tsx](file:///Users/ju/Documents/Projects/2026/sharing-app/mobile/screens/AuthScreen.tsx)
 Apple Sign-In button and terms acceptance.
 
-##### [NEW] [screens/FamilyRulesSetupScreen.tsx](file:///Users/ju/Documents/Projects/2026/sharing-app/mobile/screens/FamilyRulesSetupScreen.tsx)
-Optional family rules setup (can skip).
+
 
 ##### [NEW] [screens/HomeScreen.tsx](file:///Users/ju/Documents/Projects/2026/sharing-app/mobile/screens/HomeScreen.tsx)
 Main screen with "Share Photo" button and empty state.
@@ -701,7 +667,7 @@ Configure link settings:
 - Share text input
 - Expiry dropdown (1 hour, 1 day, 1 week [default], 1 month, 1 year, custom)
 - Download toggle
-- Family rules selector
+- Donwload toggle
 - Actions: Copy Link, Share (opens system share sheet)
 
 ##### [NEW] [screens/DashboardScreen.tsx](file:///Users/ju/Documents/Projects/2026/sharing-app/mobile/screens/DashboardScreen.tsx)
@@ -716,7 +682,7 @@ Show link analytics:
 
 ##### [NEW] [screens/SettingsScreen.tsx](file:///Users/ju/Documents/Projects/2026/sharing-app/mobile/screens/SettingsScreen.tsx)
 - Default link settings
-- Family rules management
+
 - Account settings
 
 ##### [NEW] [components/LinkCard.tsx](file:///Users/ju/Documents/Projects/2026/sharing-app/mobile/components/LinkCard.tsx)
@@ -738,17 +704,14 @@ Global auth state management.
 ##### [NEW] [pages/[shortCode].tsx](file:///Users/ju/Documents/Projects/2026/sharing-app/viewer/pages/%5BshortCode%5D.tsx)
 Dynamic route for viewing shared photos:
 1. Validate link (exists, not expired, not revoked, device limit check)
-2. Show family rules (first-time view) with "I Understand" button
-3. Display photo in clean viewer
-4. Show family rules footer
+4. Display photo in clean viewer
 5. Download button (if enabled)
 6. Error states (expired, revoked, limit reached)
 
 ##### [NEW] [components/PhotoViewer.tsx](file:///Users/ju/Documents/Projects/2026/sharing-app/viewer/components/PhotoViewer.tsx)
 Responsive photo display component.
 
-##### [NEW] [components/FamilyRulesModal.tsx](file:///Users/ju/Documents/Projects/2026/sharing-app/viewer/components/FamilyRulesModal.tsx)
-First-time family rules display with acceptance.
+
 
 ##### [NEW] [components/ErrorScreen.tsx](file:///Users/ju/Documents/Projects/2026/sharing-app/viewer/components/ErrorScreen.tsx)
 Friendly error messages for invalid links.
@@ -760,17 +723,28 @@ Generate device fingerprint (post-MVP, placeholder for now).
 
 ### Key Implementation Details
 
-#### **Photo Upload Flow**
-1. User selects photo in mobile app
-2. App uploads to backend `/links` endpoint
-3. Backend strips EXIF metadata and optimizes image using `sharp`
-   - Resize to max 2048px width/height (Reduces file size significantly)
-   - Compress to ~80% quality
-4. Generate thumbnail (if requested) at 200x200px
-5. Upload original + thumbnail to Supabase Storage
-6. Generate unique short code (8 characters, URL-safe)
-7. Create database record with default settings (1 week expiry)
-8. Return link to app
+#### **Photo Upload Flow (Client-Side Only)**
+1.  **Select**: User picks photo in mobile app.
+2.  **Process (Client-Side)**:
+    -   Use `expo-image-manipulator` to:
+        -   Strip EXIF metadata.
+        -   Resize to max 2048px (reduce file size).
+        -   Compress to ~80% quality.
+    -   **Result**: Raw `Uint8Array` of the optimized image.
+3.  **Encrypt (Client-Side)**:
+    -   Generate unique 32-byte key.
+    -   Encrypt `Uint8Array` using **AES-256-GCM**.
+    -   Result: Encrypted Payload (`Version + IV + Tag + Ciphertext`).
+4.  **Upload**:
+    -   Request Signed URL from Supabase (for `storage/{uid}/{uuid}`).
+    -   Upload **Encrypted Payload** directly to Supabase Storage.
+    -   (Optional) Repeat for Thumbnail (if "Public Preview" logic is active).
+5.  **Create Link**:
+    -   Insert record into `shared_links` via Supabase SDK.
+    -   Call Edge Function (or Insert) to store Key in `link_secrets` securely.
+6.  **Share**:
+    -   Generate short URL.
+    -   Show system share sheet.
 9. App copies link to clipboard and shows share options
 
 #### **Link Validation Flow (Recipient)**
@@ -859,7 +833,7 @@ npm test
 
 **Recipient Experience Testing**
 1. Open link in Safari (iOS), Chrome (Android), desktop browser
-2. Verify family rules modal appears (first time)
+
 3. View photo in responsive viewer
 4. Test download button (when enabled)
 5. Test error states:
@@ -903,33 +877,48 @@ All user data (photos, thumbnails) must be encrypted to ensure privacy and secur
 
 ### Client-Side Encryption Implementation
 
+**Standard: AES-256-GCM**
+- **Algorithm**: AES-256-GCM (Galois/Counter Mode) for authenticated encryption.
+- **Input**: Raw binary data (`ArrayBuffer` / `Uint8Array`), NOT Base64 strings.
+- **Output**: Structured binary payload.
+
+**Structured Payload Format:**
+We avoid string concatenation and use a defined binary structure:
+```
+[ Version (1 byte) ] + [ IV (12 bytes) ] + [ Auth Tag (16 bytes) ] + [ Ciphertext (N bytes) ]
+``` 
+
 ```typescript
 // mobile/services/encryption.ts
 import QuickCrypto from 'react-native-quick-crypto';
 
 export class PhotoEncryption {
-  // Generate unique 256-bit key per photo
+  // Generate unique 256-bit key (32 bytes)
   static async generateKey(): Promise<string> {
     const randomBytes = QuickCrypto.randomBytes(32);
-    return Array.from(randomBytes)
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('');
+    // Return hex string for DB storage
+    return randomBytes.toString('hex');
   }
   
-  // Encrypt photo using AES-256 (Native performance)
-  static encryptPhoto(photoBase64: string, key: string): string {
-    const iv = QuickCrypto.randomBytes(16);
-    const cipher = QuickCrypto.createCipheriv('aes-256-cbc', Buffer.from(key, 'hex'), iv);
-    let encrypted = cipher.update(photoBase64, 'utf8', 'base64');
-    encrypted += cipher.final('base64');
-    // Return IV + Encrypted Data
-    return iv.toString('hex') + ':' + encrypted;
-  }
-  
-  // Decrypt photo (recipient viewer - Web uses Web Crypto API)
-  static async decryptPhotoWeb(encryptedData: string, key: string): Promise<string> {
-    // Implementation using Web Crypto API for viewer
-    return decryptedData;
+  // Encrypt Buffer (GCM Mode)
+  static encryptPhoto(imageBytes: Uint8Array, keyHex: string): Uint8Array {
+    const key = Buffer.from(keyHex, 'hex');
+    const iv = QuickCrypto.randomBytes(12); // GCM standard IV is 12 bytes
+    
+    // Create GCM Cipher
+    const cipher = QuickCrypto.createCipheriv('aes-256-gcm', key, iv);
+    
+    // Update and Finalize
+    const encrypted = Buffer.concat([
+      cipher.update(imageBytes),
+      cipher.final()
+    ]);
+    
+    const authTag = cipher.getAuthTag(); // 16 bytes
+    
+    // Construct Payload: [Version: 1] [IV: 12] [Tag: 16] [Ciphertext]
+    const version = Buffer.from([1]);
+    return Buffer.concat([version, iv, authTag, encrypted]);
   }
 }
 ```
@@ -987,9 +976,8 @@ https://sharesafe.app/v/abc123
 ### Database Schema Updates
 
 ```sql
--- Add encryption key column
-ALTER TABLE shared_links 
-  ADD COLUMN client_encryption_key TEXT;
+-- Key storage handled by strict `link_secrets` table (see Schema section)
+-- No modification to `shared_links` needed for keys
 
 -- Enable PostgreSQL encryption extension
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
@@ -1016,24 +1004,69 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 ```typescript
 // viewer/utils/photoDecryption.ts
-export async function loadAndDecryptPhoto(shortCode: string): Promise<string> {
-  // 1. Extract key from URL fragment
-  const key = window.location.hash.replace('#key=', '');
-  
-  // 2. Fetch encrypted photo
-  const response = await fetch(`/api/view/${shortCode}`);
-  const { encryptedPhotoUrl } = await response.json();
-  
-  // 3. Download encrypted data
-  const encryptedData = await fetch(encryptedPhotoUrl).then(r => r.text());
-  
-  // 4. Decrypt client-side
-  const photoBase64 = PhotoEncryption.decryptPhoto(encryptedData, key);
-  
-  // 5. Display photo
-  return `data:image/jpeg;base64,${photoBase64}`;
+export async function loadAndDecryptPhoto(shortCode: string, keyHex: string): Promise<string> {
+  try {
+    // 1. Fetch encrypted binary blob
+    const response = await fetch(`/api/view/${shortCode}/blob`);
+    if (!response.ok) throw new Error('FetchFailed');
+    
+    const encryptedBuffer = await response.arrayBuffer();
+    
+    // 2. Parse Structured Payload
+    // [ Version (1) ] [ IV (12) ] [ Tag (16) ] [ Ciphertext (N) ]
+    const view = new DataView(encryptedBuffer);
+    const version = view.getUint8(0);
+    
+    if (version !== 1) throw new Error('UnknownVersion');
+    
+    const iv = encryptedBuffer.slice(1, 13);
+    const tag = encryptedBuffer.slice(13, 29);
+    const ciphertext = encryptedBuffer.slice(29);
+    
+    // 3. Import Key (Web Crypto API)
+    const keyBytes = matchKeyHexToBytes(keyHex); // Helper to convert hex string to Uint8Array
+    const cryptoKey = await window.crypto.subtle.importKey(
+      'raw', 
+      keyBytes, 
+      'AES-GCM', 
+      false, 
+      ['decrypt']
+    );
+    
+    // 4. Decrypt (GCM automatically verifies Auth Tag)
+    // CRITICAL: WebCrypto requires the Auth Tag to be appended to the Ciphertext
+    // and explicitly requires tagLength: 128 in the algorithm params.
+    const dataToDecrypt = concatBuffers(ciphertext, tag);
+    
+    const decryptedBuffer = await window.crypto.subtle.decrypt(
+      { 
+        name: 'AES-GCM', 
+        iv: iv, // MUST be 12 bytes
+        tagLength: 128 // MUST be explicit
+      },
+      cryptoKey,
+      dataToDecrypt
+    );
+    
+    // 5. Convert to Blob URL
+    const blob = new Blob([decryptedBuffer], { type: 'image/jpeg' });
+    return URL.createObjectURL(blob);
+    
+  } catch (error) {
+    console.error('Decryption failed:', error);
+    // Return explicit error state rather than partial render
+    throw new Error('DecryptionFailed'); 
+  }
 }
 ```
+
+### Decryption UX States
+We treat decryption failure as a first-class state, never attempting partial renders.
+
+- **Success**: Photo renders immediately.
+- **Decryption Failed**: "This photo cannot be decrypted. The link may be corrupted." (Show 'Broken Lock' icon).
+- **Network Error**: "Failed to load photo data. Check your connection."
+- **Invalid Key**: "Access Denied. Invalid encryption key."
 
 ### Security Checklist
 
