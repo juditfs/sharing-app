@@ -50,6 +50,62 @@ A controlled photo sharing app for privacy-conscious parents to share photos via
 > 
 > All photos must be encrypted client-side before upload using AES-256 encryption with unique keys per photo. For MVP, encryption keys will be stored encrypted in the database and retrieved via API. A future "Advanced Privacy Mode" will allow keys to be embedded in URL fragments (zero-knowledge architecture) for users who want maximum privacy. See the Encryption & Security Strategy section for full details.
 
+## MVP Scope
+
+### **MVP Features (Initial Release)**
+
+**Core Functionality:**
+- ✅ Photo sharing via controlled links
+- ✅ Image size reduction (max 2048px, ~80% quality)
+- ✅ Time-limited access (1 hour, 1 day, 1 week [default], 1 month, 1 year, custom)
+- ✅ Manual link revocation
+- ✅ Download control (allow/disallow)
+- ✅ EXIF metadata stripping
+- ✅ Client-side AES-256 encryption
+- ✅ Optional preview thumbnails
+
+**Authentication:**
+- ✅ Apple Sign-In only
+
+**User Experience:**
+- ✅ Mobile app (iOS & Android via React Native + Expo)
+- ✅ Web viewer for recipients (no signup required)
+- ✅ Link dashboard (active/revoked/expired tabs)
+- ✅ Basic analytics (view count, access history)
+
+**Technical:**
+- ✅ React Native Paper UI components
+- ✅ Node.js + Express backend
+- ✅ Supabase (PostgreSQL + Auth + Storage)
+- ✅ Encryption keys stored in database
+- ✅ HTTPS/TLS for all communication
+
+### **Post-MVP Features (Future Enhancements)**
+
+**Advanced Privacy:**
+- ⏳ Device-based access limits (with cookie/fingerprint tracking)
+- ⏳ URL fragment encryption keys (zero-knowledge architecture)
+- ⏳ Screenshot detection warnings (native apps only)
+
+**Additional Authentication:**
+- ⏳ Google Sign-In
+- ⏳ Email/Password authentication
+
+**Enhanced Features:**
+- ⏳ Family rules setup and enforcement
+- ⏳ Sharing groups with custom defaults
+- ⏳ Context tracking (recently shared with)
+- ⏳ Deep linking to messaging apps
+- ⏳ Detailed device analytics (device type, time)
+- ⏳ Push notifications for link access
+
+**Shared Rules Enhancements:**
+- ⏳ Rule templates with gentle enforcement
+- ⏳ Family-level vs link-level rules
+- ⏳ Recipient onboarding with rule acceptance
+
+---
+
 ## Proposed Changes
 
 ### Technology Stack
@@ -693,7 +749,9 @@ Generate device fingerprint (post-MVP, placeholder for now).
 #### **Photo Upload Flow**
 1. User selects photo in mobile app
 2. App uploads to backend `/links` endpoint
-3. Backend strips EXIF metadata using `exif-parser` or `sharp`
+3. Backend strips EXIF metadata and optimizes image using `sharp`
+   - Resize to max 2048px width/height (Reduces file size significantly)
+   - Compress to ~80% quality
 4. Generate thumbnail (if requested) at 200x200px
 5. Upload original + thumbnail to Supabase Storage
 6. Generate unique short code (8 characters, URL-safe)

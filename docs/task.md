@@ -1,11 +1,11 @@
 # ShareSafe MVP Implementation Tasks
 
 ## Planning & Architecture
-- [ ] Review PRD and finalize technical decisions
-- [ ] Create implementation plan document
-- [ ] Define backend architecture and API contracts
-- [ ] Design database schema
-- [ ] Plan mobile app architecture (React Native)
+- [x] Review PRD and finalize technical decisions
+- [x] Create implementation plan document
+- [x] Define backend architecture and API contracts
+- [x] Design database schema
+- [x] Plan mobile app architecture (React Native)
 
 ## Backend Development
 - [ ] Set up Node.js/Express backend with TypeScript
@@ -14,6 +14,7 @@
 - [ ] Set up cloud storage for photos (S3/Cloudflare R2)
 - [ ] Build link generation and management API
 - [ ] Implement photo upload with metadata stripping
+- [ ] Implement image optimization (resize/compress)
 - [ ] Create link validation and access control logic
 - [ ] Build expiration handling system
 - [ ] Implement revocation functionality
@@ -30,7 +31,7 @@
 - [ ] Create links dashboard (active/revoked/expired)
 - [ ] Build link detail view with analytics
 - [ ] Implement settings screen
-- [ ] Add family rules setup (optional)
+- [ ] Implement settings screen
 
 ## Recipient Web Viewer
 - [ ] Create responsive web viewer for recipients
