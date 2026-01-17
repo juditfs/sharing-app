@@ -46,9 +46,11 @@ A controlled photo sharing app for privacy-conscious parents to share photos via
 > The PRD specified "never" as the default expiry (line 275), but per user clarification, the default will be **1 week**. This better aligns with the product's privacy-first positioning.
 
 > [!IMPORTANT]
-> **End-to-End Encryption Required**
+> **End-to-End Encryption Clarification**
 > 
-> All photos must be encrypted client-side before upload using AES-256 encryption with unique keys per photo. For MVP, encryption keys will be stored encrypted in the database and retrieved via API. A future "Advanced Privacy Mode" will allow keys to be embedded in URL fragments (zero-knowledge architecture) for users who want maximum privacy. See the Encryption & Security Strategy section for full details.
+> All photos are encrypted client-side before upload using AES-256. For the MVP, **encryption keys are stored (encrypted) in the database**. 
+> 
+> **Note**: This provides robust security against casual breaches but is **not Zero-Knowledge** since the server technically holds the keys. A future "Advanced Privacy Mode" will allow keys to be embedded in URL fragments for true Zero-Knowledge privacy.
 
 ## MVP Scope
 
@@ -58,11 +60,11 @@ A controlled photo sharing app for privacy-conscious parents to share photos via
 - ✅ Photo sharing via controlled links
 - ✅ Image size reduction (max 2048px, ~80% quality)
 - ✅ Time-limited access (1 hour, 1 day, 1 week [default], 1 month, 1 year, custom)
+- ✅ **Thumbnail Privacy Options**: Default is encrypted (generic placeholder in WhatsApp). Encrypted thumbnails are still generated for the **Sender's Dashboard** and **Faster Web Viewer Loading**. Users can opt-in to **Public Preview**, which uploads a separate **unencrypted** thumbnail for WhatsApp to display. This is **not** end-to-end encrypted.
 - ✅ Manual link revocation
 - ✅ Download control (allow/disallow)
 - ✅ EXIF metadata stripping
 - ✅ Client-side AES-256 encryption
-- ✅ Optional preview thumbnails
 
 **Authentication:**
 - ✅ Apple Sign-In only
@@ -112,93 +114,88 @@ A controlled photo sharing app for privacy-conscious parents to share photos via
 
 **Mobile Apps (iOS & Android)**
 - **Framework**: React Native with Expo
-- **Why**: Single codebase for both platforms, excellent share sheet integration, fast development
-- **Alternative considered**: Native Swift/Kotlin (rejected due to duplicate effort)
+- **Why**: Single codebase, excellent share sheet integration, fast development
+- **Key Libraries**:
+  - `react-native-paper` (UI)
+  - `expo-image-manipulator` (Client-side compression & EXIF stripping)
+  - `react-native-quick-crypto` (High-performance encryption)
 
-**Backend**
-- **Runtime**: Node.js with Express and TypeScript
-- **Why**: Simple, widely supported, excellent ecosystem for file handling
-- **Hosting**: Railway or Render (simple deployment, free tier available)
-
-**Database & Auth**
-- **Option A - Supabase (Recommended)**
-  - PostgreSQL database + authentication + storage in one
-  - Built-in Apple Sign-In support
-  - Generous free tier
-  - Real-time subscriptions for link status updates
-- **Option B - Firebase**
-  - Similar features, Google ecosystem
-  - Slightly more expensive at scale
-
-**File Storage**
-- **Cloudflare R2** (S3-compatible, no egress fees) or **Supabase Storage**
-- Photos stored with unique IDs, not original filenames
-- Automatic deletion on expiration/revocation
+**Backend & Data (Serverless)**
+- **Platform**: **Supabase** (Direct from client)
+- **Database**: PostgreSQL with Row Level Security (RLS)
+- **Auth**: Supabase Auth (Apple Sign-In)
+- **Logic**: **Supabase Edge Functions** (Deno/TypeScript) for:
+  - Complex validations
+  - Link revocation logic
+  - Cron jobs (expiration)
+- **Storage**: Supabase Storage (S3-backed)
 
 **Recipient Viewer**
-- **Static web app** (React/Next.js) hosted on Vercel/Netlify
-- Responsive, mobile-optimized
-- No authentication required
+- **Framework**: Next.js (Static Export `output: 'export'`)
+- **Hosting**: Vercel / Netlify / Cloudflare Pages
+- **Why**: Cheap, fast, separate from app infrastructure
+
 
 ---
 
 ### Component Reusability Strategy
 
-Use **React Native Paper** as the UI foundation with shared business components for cross-platform code reuse.
+**Strategy: Hybrid UI (Native-Feel iOS + Material Android)**
+We will use **React Native Paper** for Android to get perfect Material 3 support, but use **Custom Native-Like Components** on iOS. We will achieve this through **Wrapper Components**.
 
-#### **Project Structure**
+#### **UI Library Approach**
+- **Android**: React Native Paper (Material Design 3)
+- **iOS**: Custom styled components (Cupertino style) or unstyled Paper components with iOS theme
+- **Web**: React Native Paper (Material Design is standard on web)
+
+#### **Wrapper Component Pattern**
+We will not use `Button` or `TextInput` directly from libraries. Instead, we generate our own:
+```typescript
+// components/AppButton.tsx
+import { Platform, Pressable, Text, StyleSheet } from 'react-native';
+import { Button as PaperButton } from 'react-native-paper';
+
+export const AppButton = ({ children, onPress, mode = 'contained', ...props }) => {
+  // iOS: Native-style Pressable
+  if (Platform.OS === 'ios') {
+    return (
+      <Pressable 
+        style={({ pressed }) => [
+          styles.iosButton, 
+          mode === 'outlined' && styles.iosOutlined,
+          pressed && styles.iosPressed
+        ]} 
+        onPress={onPress}
+      >
+        <Text style={[styles.iosText, mode === 'outlined' && styles.iosTextOutlined]}>
+          {children}
+        </Text>
+      </Pressable>
+    );
+  }
+  // Android/Web: Material Design
+  return <PaperButton mode={mode} onPress={onPress} {...props}>{children}</PaperButton>;
+};
 ```
-/sharing-app
-  /packages
-    /shared-components     # Business-specific shared components
-    /shared-types          # TypeScript types/interfaces
-    /shared-utils          # Business logic utilities
-  /mobile                  # React Native app (uses React Native Paper)
-  /viewer                  # Next.js web app (uses React Native Web + Paper)
-  /backend                 # Node.js API
-```
-
-#### **UI Library: React Native Paper**
-
-**Why React Native Paper:**
-- ✅ Material Design components out of the box
-- ✅ Works with React Native Web (cross-platform)
-- ✅ Built-in theming system
-- ✅ Excellent accessibility support
-- ✅ Well-maintained and documented
-- ✅ Fast development with pre-built components
-
-**Core Components Used:**
-- `Button`, `Card`, `TextInput`, `Switch`, `Badge`, `Avatar`, `ActivityIndicator`
-- `Menu`, `Modal`, `Portal`, `Divider`, `Chip`
-- `List`, `Surface`, `IconButton`
 
 #### **Theme Configuration** (`/packages/shared-components/theme`)
-
-Customize React Native Paper theme for ShareSafe branding:
-
 ```typescript
-// theme/index.ts
-import { MD3LightTheme, configureFonts } from 'react-native-paper';
+import { Platform } from 'react-native';
+import { MD3LightTheme } from 'react-native-paper';
 
-const fontConfig = {
-  fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
-};
+const isIOS = Platform.OS === 'ios';
 
 export const theme = {
-  ...MD3LightTheme,
-  fonts: configureFonts({ config: fontConfig }),
+  // Only inherit MD3 properties on Android/Web
+  ...(isIOS ? {} : MD3LightTheme),
   colors: {
     ...MD3LightTheme.colors,
-    primary: '#6366F1',
-    primaryContainer: '#E0E7FF',
-    secondary: '#10B981',
-    error: '#EF4444',
-    background: '#FFFFFF',
-    surface: '#F9FAFB',
-    surfaceVariant: '#F3F4F6',
+    primary: isIOS ? '#007AFF' : '#6366F1', // iOS Blue vs Brand Indigo
+    background: isIOS ? '#F2F2F7' : '#FFFFFF', // iOS Grouped Background
+    surface: isIOS ? '#FFFFFF' : '#F9FAFB',
+    error: '#FF3B30', // iOS System Red
   },
-  roundness: 12,
+  roundness: isIOS ? 10 : 20, // Tighter corners on iOS headers
 };
 ```
 
@@ -471,6 +468,29 @@ export default function ViewerPage({ link }) {
 }
 ```
 
+#### **Metro Configuration**
+
+Since this is a monorepo, we must configure Metro to resolve dependencies correctly from the root `node_modules` and watch the shared packages.
+
+```javascript
+// metro.config.js (root)
+const { getDefaultConfig } = require('expo/metro-config');
+const path = require('path');
+
+const projectRoot = __dirname;
+const workspaceRoot = path.resolve(projectRoot, '../..');
+
+const config = getDefaultConfig(projectRoot);
+
+config.watchFolders = [workspaceRoot];
+config.resolver.nodeModulesPaths = [
+  path.resolve(projectRoot, 'node_modules'),
+  path.resolve(workspaceRoot, 'node_modules'),
+];
+
+module.exports = config;
+```
+
 ---
 
 ### Architecture Overview
@@ -479,43 +499,43 @@ export default function ViewerPage({ link }) {
 graph TB
     subgraph "Mobile App (React Native)"
         A[Photo Selection]
-        B[Link Creation]
-        C[Dashboard]
-        D[Settings]
+        B[Client-Side Processing]
+        B1[Strip EXIF / Resize]
+        B2[Encrypt (AES-256)]
+        C[Upload to Supabase]
+        D[Link Creation]
     end
     
-    subgraph "Backend (Node.js/Express)"
-        E[API Server]
-        F[Auth Service]
-        G[Link Manager]
-        H[File Processor]
-    end
-    
-    subgraph "Data Layer (Supabase)"
-        I[(PostgreSQL)]
+    subgraph "Supabase Platform"
+        I[(PostgreSQL + RLS)]
         J[Storage Bucket]
         K[Auth Provider]
+        L[Edge Functions]
+        L1[Cron: Cleanup]
+        L2[RPC: Revoke Link]
     end
     
     subgraph "Recipient Experience"
-        L[Web Viewer]
-        M[Link Validation]
+        M[Web Viewer (Next.js Static)]
+        N[Client-Side Decryption]
     end
     
     A --> B
-    B --> E
-    C --> E
-    D --> E
-    E --> F
-    E --> G
-    E --> H
-    F --> K
-    G --> I
-    H --> J
-    L --> M
-    M --> E
-    E --> I
-    E --> J
+    B --> B1
+    B1 --> B2
+    B2 --> C
+    C --> J
+    D --> I
+    
+    M --> I
+    M --> J
+    M --> N
+    
+    L1 --> I
+    L1 --> J
+    
+    I -.-> |RLS Policy| C
+    I -.-> |RLS Policy| M
 ```
 
 ---
@@ -592,7 +612,7 @@ CREATE TABLE access_logs (
   -- Device tracking (post-MVP)
   device_fingerprint TEXT,
   user_agent TEXT,
-  ip_address INET,
+  anonymized_ip TEXT, -- Last octet removed (e.g. 192.168.1.xxx) for privacy
   
   -- Event data
   accessed_at TIMESTAMP DEFAULT NOW(),
@@ -604,57 +624,51 @@ CREATE TABLE access_logs (
 
 ### Component Breakdown
 
-#### **Backend API** (`/backend`)
+#### **Database & Security** (`/supabase`)
 
-##### [NEW] [server.ts](file:///Users/ju/Documents/Projects/2026/sharing-app/backend/server.ts)
-Main Express server setup with middleware, routes, and error handling.
+##### **Row Level Security (RLS) Policies**
+Since we are removing the middleware backend, **RLS is our primary security layer**.
 
-##### [NEW] [routes/auth.ts](file:///Users/ju/Documents/Projects/2026/sharing-app/backend/routes/auth.ts)
-- `POST /auth/apple` - Apple Sign-In callback
-- `POST /auth/logout` - User logout
-- `GET /auth/me` - Get current user
+**`shared_links` Policies:**
+1.  **INSERT**: Authenticated users can insert rows where `user_id = auth.uid()`.
+2.  **SELECT (Owner)**: Authenticated users can view rows where `user_id = auth.uid()`.
+3.  **SELECT (Recipient)**: Public/Anonymous users can view rows where:
+    - `short_code` matches input
+    - `is_revoked` is false
+    - `expires_at` is NULL or > NOW()
+4.  **UPDATE**: Authenticated users can update rows where `user_id = auth.uid()`.
 
-##### [NEW] [routes/links.ts](file:///Users/ju/Documents/Projects/2026/sharing-app/backend/routes/links.ts)
-- `POST /links` - Create new share link (upload photo, generate link)
-- `GET /links` - List user's links (with filters: active/revoked/expired)
-- `GET /links/:shortCode` - Get link details
-- `PATCH /links/:shortCode` - Update link settings (expiry, download, rules)
-- `POST /links/:shortCode/revoke` - Revoke link
-- `DELETE /links/:shortCode` - Delete link (only if revoked/expired)
-- `GET /links/:shortCode/analytics` - Get access logs
+**`storage` Policies:**
+1.  **UPLOAD**: Authenticated users can upload to `/{uid}/*`.
+2.  **DOWNLOAD (Owner)**: Authenticated users can download from `/{uid}/*`.
+3.  **DOWNLOAD (Recipient)**: Public users can download if they have a valid `short_code` mapped to that file (requires a specialized PostgreSQL function or Edge Function to validate access before signing URL, or relying on unguessable filenames + short-lived signed URLs generated by Edge Function).
 
-##### [NEW] [routes/viewer.ts](file:///Users/ju/Documents/Projects/2026/sharing-app/backend/routes/viewer.ts)
-- `GET /view/:shortCode` - Validate and serve link data for recipient
-- `POST /view/:shortCode/log` - Log access event
-- `GET /view/:shortCode/download` - Download photo (if allowed)
+> **Note**: For MVP, we will use **Signed URLs** generated by the Mobile App (for owner) or an implementation pattern where the `shared_links` table contains the public path if valid.
 
-##### [NEW] [routes/rules.ts](file:///Users/ju/Documents/Projects/2026/sharing-app/backend/routes/rules.ts)
-- `GET /rules` - Get user's family rules
-- `POST /rules` - Create new family rule
-- `PATCH /rules/:id` - Update rule
-- `DELETE /rules/:id` - Delete rule
+##### **Edge Functions** (`/supabase/functions`)
 
-##### [NEW] [services/photoProcessor.ts](file:///Users/ju/Documents/Projects/2026/sharing-app/backend/services/photoProcessor.ts)
-- Strip EXIF metadata (location, device, timestamp)
-- Generate thumbnail (low-res preview)
-- Upload to storage
-- Return URLs
+**1. `process-expiration` (Scheduled Cron)**
+- Runs every hour.
+- Deletes files from Storage for expired links.
+- Updates `status` in database.
 
-##### [NEW] [services/linkGenerator.ts](file:///Users/ju/Documents/Projects/2026/sharing-app/backend/services/linkGenerator.ts)
-- Generate unique short codes (e.g., nanoid)
-- Create shareable URLs
-- Handle link validation logic
+**2. `get-link-details` (Optional)**
+- If RLS logic gets too complex for "Recipient View", we can wrap the fetch in an Edge Function that validates expiry/revocation and returns the signed Storage URL + metadata.
 
-##### [NEW] [services/expirationChecker.ts](file:///Users/ju/Documents/Projects/2026/sharing-app/backend/services/expirationChecker.ts)
-- Background job to check expired links
-- Delete expired photos from storage
-- Update link status
+---
 
-##### [NEW] [middleware/auth.ts](file:///Users/ju/Documents/Projects/2026/sharing-app/backend/middleware/auth.ts)
-JWT/session validation middleware for protected routes.
+#### **Backend Logic (Supabase)**
 
-##### [NEW] [config/supabase.ts](file:///Users/ju/Documents/Projects/2026/sharing-app/backend/config/supabase.ts)
-Supabase client configuration for database and storage.
+##### [NEW] [supabase/migrations/001_initial_schema.sql](file:///Users/ju/Documents/Projects/2026/sharing-app/supabase/migrations/001_initial_schema.sql)
+- Initial DDL for `users`, `shared_links`, `family_rules`.
+- Enable RLS on all tables.
+
+##### [NEW] [supabase/migrations/002_security_policies.sql](file:///Users/ju/Documents/Projects/2026/sharing-app/supabase/migrations/002_security_policies.sql)
+- RLS policies for Owner access.
+- RLS policies for Public recipient access (filtered by expiry).
+
+##### [NEW] [supabase/functions/cleanup-expired/index.ts](file:///Users/ju/Documents/Projects/2026/sharing-app/supabase/functions/cleanup-expired/index.ts)
+- Deno function to query expired rows and remove objects from Storage bucket.
 
 ---
 
@@ -683,7 +697,7 @@ Photo picker using `expo-image-picker`.
 
 ##### [NEW] [screens/LinkCreationScreen.tsx](file:///Users/ju/Documents/Projects/2026/sharing-app/mobile/screens/LinkCreationScreen.tsx)
 Configure link settings:
-- Preview thumbnail toggle (with disclaimer)
+- Preview thumbnail toggle (Off = Secure Placeholder, On = Public Thumbnail for WhatsApp)
 - Share text input
 - Expiry dropdown (1 hour, 1 day, 1 week [default], 1 month, 1 year, custom)
 - Download toggle
@@ -891,26 +905,31 @@ All user data (photos, thumbnails) must be encrypted to ensure privacy and secur
 
 ```typescript
 // mobile/services/encryption.ts
-import CryptoJS from 'crypto-js';
+import QuickCrypto from 'react-native-quick-crypto';
 
 export class PhotoEncryption {
   // Generate unique 256-bit key per photo
   static async generateKey(): Promise<string> {
-    const randomBytes = crypto.getRandomValues(new Uint8Array(32));
+    const randomBytes = QuickCrypto.randomBytes(32);
     return Array.from(randomBytes)
       .map(b => b.toString(16).padStart(2, '0'))
       .join('');
   }
   
-  // Encrypt photo using AES-256
+  // Encrypt photo using AES-256 (Native performance)
   static encryptPhoto(photoBase64: string, key: string): string {
-    return CryptoJS.AES.encrypt(photoBase64, key).toString();
+    const iv = QuickCrypto.randomBytes(16);
+    const cipher = QuickCrypto.createCipheriv('aes-256-cbc', Buffer.from(key, 'hex'), iv);
+    let encrypted = cipher.update(photoBase64, 'utf8', 'base64');
+    encrypted += cipher.final('base64');
+    // Return IV + Encrypted Data
+    return iv.toString('hex') + ':' + encrypted;
   }
   
-  // Decrypt photo (recipient viewer)
-  static decryptPhoto(encryptedData: string, key: string): string {
-    const decrypted = CryptoJS.AES.decrypt(encryptedData, key);
-    return decrypted.toString(CryptoJS.enc.Utf8);
+  // Decrypt photo (recipient viewer - Web uses Web Crypto API)
+  static async decryptPhotoWeb(encryptedData: string, key: string): Promise<string> {
+    // Implementation using Web Crypto API for viewer
+    return decryptedData;
   }
 }
 ```
@@ -1030,12 +1049,12 @@ export async function loadAndDecryptPhoto(shortCode: string): Promise<string> {
 
 ### Privacy Benefits
 
-✅ **End-to-end encryption** - Only sender and recipients can decrypt  
-✅ **Zero-knowledge architecture** - Server cannot read photo contents (Option 1)  
-✅ **Secure by default** - All photos automatically encrypted  
-✅ **No metadata leakage** - EXIF stripped before encryption  
-✅ **Automatic cleanup** - Encrypted data deleted on expiration  
-✅ **GDPR compliant** - Meets privacy requirements  
+✅ **Secure Transfer** - Keys exchanged securely via API
+✅ **Zero-knowledge ready** - Architecture supports future upgrade to URL fragment keys
+✅ **Secure by default** - All photos automatically encrypted
+✅ **No metadata leakage** - EXIF stripped before encryption
+✅ **Automatic cleanup** - Encrypted data deleted on expiration
+✅ **GDPR compliant** - Meets privacy requirements
 ✅ **Defense in depth** - Multiple encryption layers
 
 ### Performance Considerations
