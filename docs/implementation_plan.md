@@ -46,11 +46,18 @@ A controlled photo sharing app for privacy-conscious parents to share photos via
 > The PRD specified "never" as the default expiry (line 275), but per user clarification, the default will be **1 week**. This better aligns with the product's privacy-first positioning.
 
 > [!IMPORTANT]
-> **End-to-End Encryption Clarification**
+> [!IMPORTANT]
+> **Encryption Strategy Clarification**
 > 
-> All photos are encrypted client-side before upload using AES-256. For the MVP, **encryption keys are stored (encrypted) in the database**. 
+> **MVP: Client-Side Encrypted**
+> All photos are encrypted on the device before upload using AES-256. 
+> **Encryption keys** are stored in a dedicated `link_secrets` table that is **completely inaccessible** to client applications via Row Level Security.
+> - Access is restricted to **Edge Functions** using Supabase's Service Role key.
+> - Keys rely on Supabase's managed **database-at-rest encryption** and strict access controls.
+> - No additional application-layer encryption of keys is performed in the MVP.
 > 
-> **Note**: This provides robust security against casual breaches but is **not Zero-Knowledge** since the server technically holds the keys. A future "Advanced Privacy Mode" will allow keys to be embedded in URL fragments for true Zero-Knowledge privacy.
+> **Post-MVP: Advanced Privacy Mode (End-to-End Encrypted)**
+> A future update will support embedding keys in URL fragments (e.g., `#key=...`). This achieves true **Zero-Knowledge / End-to-End Encryption**, where the server never sees the key.
 
 ## MVP Scope
 
@@ -73,7 +80,7 @@ A controlled photo sharing app for privacy-conscious parents to share photos via
 - ✅ Mobile app (iOS & Android via React Native + Expo)
 - ✅ Web viewer for recipients (no signup required)
 - ✅ Link dashboard (active/revoked/expired tabs)
-- ✅ Basic analytics (view count, access history)
+- ✅ Basic analytics (approximate view count, access history)
 
 **Technical:**
 - ✅ React Native Paper UI components
@@ -86,7 +93,7 @@ A controlled photo sharing app for privacy-conscious parents to share photos via
 
 **Advanced Privacy:**
 - ⏳ Device-based access limits (with cookie/fingerprint tracking)
-- ⏳ URL fragment encryption keys (zero-knowledge architecture)
+- ⏳ URL fragment encryption keys (**Advanced Privacy Mode** / End-to-End)
 - ⏳ Screenshot detection warnings (native apps only)
 
 **Additional Authentication:**
@@ -452,7 +459,7 @@ const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
 
 const projectRoot = __dirname;
-const workspaceRoot = path.resolve(projectRoot, '../..');
+const workspaceRoot = path.resolve(projectRoot, '..');
 
 const config = getDefaultConfig(projectRoot);
 
@@ -462,52 +469,90 @@ config.resolver.nodeModulesPaths = [
   path.resolve(workspaceRoot, 'node_modules'),
 ];
 
+// Only add this if Metro still fails to resolve workspace packages
+// config.resolver.extraNodeModules = {};
+
 module.exports = config;
 ```
 
 ---
 
 ### Architecture Overview
+ 
+ ```mermaid
+ graph TB
+     subgraph "Mobile App (React Native)"
+         A[Photo Selection]
+         B[Client-Side Processing]
+         B1[Strip EXIF / Resize]
+         B2[Encrypt (AES-256)]
+         C[Upload to Supabase]
+         D[Link Creation]
+     end
+     
+     subgraph "Supabase Platform"
+         I[(PostgreSQL + RLS)]
+         J[Storage Bucket (Private)]
+         K[Auth Provider]
+         L[Edge Functions]
+         L1[Cron: Cleanup]
+         L2[Gateway: Get Link]
+     end
+     
+     subgraph "Recipient Experience"
+         M[Web Viewer (Next.js Static)]
+         N[Client-Side Decryption]
+     end
+     
+     A --> B
+     B --> B1
+     B1 --> B2
+     B2 --> C
+     C --> J
+     D --> I
+     
+     M --> L2
+     L2 --> I
+     L2 --> J
+     M --> N
+     
+     L1 --> I
+     L1 --> J
+ ```
 
-```mermaid
-graph TB
-    subgraph "Mobile App (React Native)"
-        A[Photo Selection]
-        B[Client-Side Processing]
-        B1[Strip EXIF / Resize]
-        B2[Encrypt (AES-256)]
-        C[Upload to Supabase]
-        D[Link Creation]
-    end
-    
-    subgraph "Supabase Platform"
-        I[(PostgreSQL + RLS)]
-        J[Storage Bucket (Private)]
-        K[Auth Provider]
-        L[Edge Functions]
-        L1[Cron: Cleanup]
-        L2[Gateway: Get Link]
-    end
-    
-    subgraph "Recipient Experience"
-        M[Web Viewer (Next.js Static)]
-        N[Client-Side Decryption]
-    end
-    
-    A --> B
-    B --> B1
-    B1 --> B2
-    B2 --> C
-    C --> J
-    D --> I
-    
-    M --> L2
-    L2 --> I
-    L2 --> J
-    M --> N
-    
-    L1 --> I
-    L1 --> J
+
+```text
+                             +------------------------+
+                             |   Recipient (Browser)  |
+                             +-----------+------------+
+                                         |
++----------------------+                 | 1. Request Link Metadata
+|   Sender (Mobile)    |                 v
++----------+-----------+      +-----------------------+
+           |                  | Edge Function Gateway |
+           |                  |      (get-link)       |
+           |                  +-----------+-----------+
+ 1. Encrypt| (Client-side)                |
+           |                              | 2. Validate & Sign URL
+           v                              | 3. Log Access (Hashed IP)
++----------------------+                  |
+| Supabase Storage     | <----------------+
+| (Private Bucket)     |                  |
++----------+-----------+                  | 4. Return Metadata + Signed URL
+           ^                              v
+           |                  +-----------------------+
+           +----------------- |   Recipient (Browser) |
+        5. Download Blob      +-----------+-----------+
+                                          |
+           +----------------------+       | 6. Request Key (Delayed)
+           | Supabase Database    | <-----+
+           | (Postgres + RLS)     |
+           +----------------------+
+             - shared_links
+             - link_secrets (Key)
+             - access_logs
+
+7. Decrypt & Render (Client-side)
 ```
 
 ---
@@ -551,8 +596,8 @@ CREATE TABLE shared_links (
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW(),
   
-  -- Analytics
-  view_count INTEGER DEFAULT 0,
+  -- Analytics (Best Effort)
+  view_count INTEGER DEFAULT 0, -- Approximate count (not concurrency safe)
   last_accessed_at TIMESTAMP
 );
 
@@ -601,6 +646,11 @@ CREATE TABLE access_logs (
     -   `CREATE POLICY no_direct_access ON link_secrets FOR ALL USING (false);`
     -   Keys are **strictly accessible** only via Edge Functions (Service Role).
 
+> **CRITICAL SECURITY NOTE**: 
+> - **Service Role Keys** must ONLY exist in Supabase Edge Function Secrets. 
+> - **NEVER** bundle Service Role keys in the Mobile App or Client Code.
+> - **Shared Links Public Access**: Explicitly disabled. All access must flow through the `get-link` Edge Function.
+
 **`storage` Policies:**
 1.  **UPLOAD/DELETE (Owner)**: Authenticated users can access `/{uid}/*`.
 2.  **DOWNLOAD**: **DISABLED**. Storage is **Private**. Access is only granted via Signed URLs generated by Edge Functions.
@@ -609,15 +659,27 @@ CREATE TABLE access_logs (
 
 **1. `get-link` (Recipient Gateway)**
 - **Role**: Secure Gatekeeper for public access.
-- **Input**: `shortCode`
+- **Input**: `shortCode`, `action` ('metadata' | 'key')
 - **Logic**:
-  1.  Query `shared_links` (using Service Role) to find link.
-  2.  Check `is_revoked`, `expires_at`.
-  3.  **Fetch Key**: Query `link_secrets` (using Service Role).
-  4.  Generate Signed URL for storage.
-  5.  **Return**: `{ signedUrl, key, metadata }`.
+  1.  **Validate**: Check `shared_links` (Service Role) for expiry/revocation.
+  2.  **Action 'metadata'**:
+      -   Generate **Signed URL** (valid for **60 seconds**).
+      -   Return `{ signedUrl, metadata }`.
+  3.  **Action 'key'**:
+      -   Fetch key from `link_secrets` (Service Role).
+      -   Return `{ key }`.
+  4.  **Security Note**: Splitting these responses prevents a single intercepted payload from compromising the photo.
 
-**2. `process-expiration` (Scheduled Cron)**
+**2. `create-link` (Sender Gateway)**
+- **Role**: Securely create link and save key (bypassing RLS "No Direct Access").
+- **Input**: `photoUrl`, `encryptedKey` (hex/base64), `iv`, `authTag`.
+- **Logic**:
+  1.  **Auth Check**: Verify user is authenticated.
+  2.  **Insert**: Add row to `shared_links`.
+  3.  **Insert Key**: Add row to `link_secrets` (via Service Role).
+  4.  **Return**: `{ shortCode, linkId }`.
+
+**3. `process-expiration` (Scheduled Cron)**
 - Runs every hour.
 - Deletes files from Storage for expired links.
 - Updates `status` in database.
@@ -631,11 +693,110 @@ CREATE TABLE access_logs (
 - Enable RLS on all tables.
 
 ##### [NEW] [supabase/migrations/002_security_policies.sql](file:///Users/ju/Documents/Projects/2026/sharing-app/supabase/migrations/002_security_policies.sql)
-- RLS policies for Owner access.
-- RLS policies for Public recipient access (filtered by expiry).
+
+```sql
+-- =========================================
+-- Enable Row Level Security
+-- =========================================
+ALTER TABLE shared_links ENABLE ROW LEVEL SECURITY;
+ALTER TABLE link_secrets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE access_logs ENABLE ROW LEVEL SECURITY;
+
+-- =========================================
+-- shared_links: Owner-Only Access
+-- =========================================
+-- Owner can insert/select/update/delete their own links
+CREATE POLICY "shared_links_insert_own" ON shared_links FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "shared_links_select_own" ON shared_links FOR SELECT TO authenticated USING (auth.uid() = user_id);
+CREATE POLICY "shared_links_update_own" ON shared_links FOR UPDATE TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "shared_links_delete_own" ON shared_links FOR DELETE TO authenticated USING (auth.uid() = user_id);
+
+-- Explicitly deny all anon access (defensive)
+CREATE POLICY "shared_links_deny_anon" ON shared_links FOR ALL TO anon USING (false);
+
+-- =========================================
+-- link_secrets: NO CLIENT ACCESS
+-- =========================================
+-- Deny all RLS-governed access. Service Role bypasses this.
+CREATE POLICY "link_secrets_deny_all" ON link_secrets FOR ALL USING (false);
+
+-- =========================================
+-- access_logs: Read Own, Write via Functions
+-- =========================================
+-- Owners can view access logs for their own links
+CREATE POLICY "access_logs_select_owner" ON access_logs FOR SELECT TO authenticated USING (
+  EXISTS (
+    SELECT 1 FROM shared_links
+    WHERE shared_links.id = access_logs.link_id AND shared_links.user_id = auth.uid()
+  )
+);
+-- Deny all client-side writes (Edge Functions write via Service Role)
+CREATE POLICY "access_logs_deny_client_writes" ON access_logs FOR INSERT, UPDATE, DELETE TO authenticated, anon USING (false);
+
+-- =========================================
+-- Storage: Private Bucket
+-- =========================================
+-- Users can upload/delete files in their own folder
+CREATE POLICY "storage_upload_own_files" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'photos' AND (storage.foldername(name))[1] = auth.uid()::text);
+CREATE POLICY "storage_delete_own_files" ON storage.objects FOR DELETE TO authenticated USING (bucket_id = 'photos' AND (storage.foldername(name))[1] = auth.uid()::text);
+
+-- Explicitly deny ALL reads (public + authenticated). Access via Signed URLs only.
+CREATE POLICY "storage_deny_all_reads" ON storage.objects FOR SELECT TO anon, authenticated USING (false);
+```
+
+```typescript
+import { createHash } from 'node:crypto';
+// import { serve } ...
+
+// 1. In-Memory Rate Limiter (Max 60 req/min per IP)
+const requestCounts = new Map<string, { count: number; resetAt: number }>();
+function checkRateLimit(ip: string): boolean {
+  // ... (User provided implementation) ...
+}
+
+// 2. IP Anonymization (Daily Salt)
+function hashIP(ip: string): string {
+  // ... (SHA-256 + Daily Salt implementation) ...
+}
+
+// Main Handler Logic
+// Input: { shortCode, action: 'metadata' | 'key' }
+// 1. Check Rate Limit
+// 2. Validate Link (DB Query) -> Check Expiry/Revocation
+// 3. Log Access (access_logs) -> Store ip_hash
+// 4. Increment View Count (shared_links)
+//    - UPDATE shared_links SET view_count = view_count + 1 WHERE id = ...
+//    - Note: This is an atomic increment but still best-effort under high concurrency.
+
+// 5. Handle Action:
+//    - If action === 'metadata':
+//        Generate Signed URL (60 seconds)
+//        Return { signedUrl, metadata }
+//    - If action === 'key':
+//        6. Anti-Abuse Check:
+//           - Enforce strict rate limit for KEY fetches per shortCode (e.g., 5/hour).
+//           - Maintain counter in DB or KV limit.
+//        Fetch Key from link_secrets (Service Role)
+//        Return { key }
+```
 
 ##### [NEW] [supabase/functions/cleanup-expired/index.ts](file:///Users/ju/Documents/Projects/2026/sharing-app/supabase/functions/cleanup-expired/index.ts)
-- Deno function to query expired rows and remove objects from Storage bucket.
+- **Cron Job**: Runs every hour.
+- **Logic**:
+  1. Find rows where `expires_at < NOW()` OR `is_revoked = true` (and status != 'deleted').
+  2. **Storage Cleanup**:
+     - Delete encrypted original: `photos/{uuid}`.
+     - Delete **public thumbnail**: `thumbnails/{uuid}`.
+  3. **DB Update**: Set status to 'deleted', clear sensitive fields.
+  4. **Security**: Ensures no "zombie" public thumbnails persist after revocation.
+
+---
+
+##### **Edge Function Responsibility Separation**
+Although link viewing is handled by a single `get-link` Edge Function, internal responsibilities are explicitly separated into validation, access logging, key retrieval, and URL generation steps.
+- **Critical Path**: Only validation and content retrieval are blocking operations.
+- **Best-Effort**: Logging and analytics are non-blocking where possible.
+- **Idempotency**: All steps are designed to safely handle retries.
 
 ---
 
@@ -663,7 +824,8 @@ Photo picker using `expo-image-picker`.
 
 ##### [NEW] [screens/LinkCreationScreen.tsx](file:///Users/ju/Documents/Projects/2026/sharing-app/mobile/screens/LinkCreationScreen.tsx)
 Configure link settings:
-- Preview thumbnail toggle (Off = Secure Placeholder, On = Public Thumbnail for WhatsApp)
+- **Preview thumbnail toggle** (Off = Secure Placeholder, On = Public Thumbnail for WhatsApp)
+  - *UI Warning*: "Public thumbnails are shared with messaging apps and may be cached on their servers even after you delete the link."
 - Share text input
 - Expiry dropdown (1 hour, 1 day, 1 week [default], 1 month, 1 year, custom)
 - Download toggle
@@ -908,17 +1070,19 @@ export class PhotoEncryption {
     // Create GCM Cipher
     const cipher = QuickCrypto.createCipheriv('aes-256-gcm', key, iv);
     
-    // Update and Finalize
+    // Node.js/QuickCrypto: cipher.final() does NOT include the tag.
     const encrypted = Buffer.concat([
       cipher.update(imageBytes),
       cipher.final()
     ]);
     
+    // Get the Auth Tag (MUST be appended manually for GCM compatibility)
     const authTag = cipher.getAuthTag(); // 16 bytes
     
-    // Construct Payload: [Version: 1] [IV: 12] [Tag: 16] [Ciphertext]
+    // Paylod Structure: [Version: 1] [IV: 12] [Ciphertext... + Tag: 16]
+    // WebCrypto expects the tag to be the last 16 bytes of the ciphertext buffer.
     const version = Buffer.from([1]);
-    return Buffer.concat([version, iv, authTag, encrypted]);
+    return Buffer.concat([version, iv, encrypted, authTag]);
   }
 }
 ```
@@ -966,7 +1130,8 @@ https://sharesafe.app/v/abc123
 
 **Security:**
 - ✅ Photos still encrypted client-side before upload
-- ✅ Keys encrypted at rest in database (pgcrypto)
+- ✅ **Strict Access Control**: `link_secrets` table inaccessible to public/client
+- ✅ **Managed Encryption**: Keys protected by Supabase database-at-rest encryption
 - ✅ HTTPS/TLS for all communication
 - ✅ Keys only accessible to authorized users
 - ⚠️ Requires trusting server (not zero-knowledge)
@@ -977,13 +1142,14 @@ https://sharesafe.app/v/abc123
 
 ```sql
 -- Key storage handled by strict `link_secrets` table (see Schema section)
--- No modification to `shared_links` needed for keys
+-- MVP Security Model:
+-- 1. Encryption keys are stored in `link_secrets`
+-- 2. Table is INACCESSIBLE to client apps (RLS Deny All)
+-- 3. Only Edge Functions (Service Role) can access keys
+-- 4. Keys rely on Supabase managed database-at-rest encryption
 
--- Enable PostgreSQL encryption extension
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
--- Encrypt sensitive columns at database level
--- (if using Option 2 - key in database)
+-- Future: App-layer encryption (pgcrypto) can be added here
+-- CREATE EXTENSION IF NOT EXISTS pgcrypto;
 ```
 
 ### Storage Configuration
@@ -1004,26 +1170,36 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 ```typescript
 // viewer/utils/photoDecryption.ts
-export async function loadAndDecryptPhoto(shortCode: string, keyHex: string): Promise<string> {
+export async function loadAndDecryptPhoto(shortCode: string): Promise<string> {
   try {
-    // 1. Fetch encrypted binary blob
-    const response = await fetch(`/api/view/${shortCode}/blob`);
-    if (!response.ok) throw new Error('FetchFailed');
+    // 1. Fetch Metadata + Signed URL (Step A)
+    // Signed URL is short-lived (60s), so we fetch it just-in-time.
+    const metaResponse = await fetch(`/api/get-link?code=${shortCode}&action=metadata`);
+    if (!metaResponse.ok) throw new Error('LinkInvalid');
+    const { signedUrl, metadata } = await metaResponse.json();
     
-    const encryptedBuffer = await response.arrayBuffer();
+    // 2. Fetch Encrypted Blob immediately
+    const blobResponse = await fetch(signedUrl);
+    if (!blobResponse.ok) throw new Error('FetchFailed');
+    const encryptedBuffer = await blobResponse.arrayBuffer();
+
+    // 3. Fetch Encryption Key (Step B)
+    // Separate call to prevent single-response compromise
+    const keyResponse = await fetch(`/api/get-link?code=${shortCode}&action=key`);
+    if (!keyResponse.ok) throw new Error('KeyAccessDenied');
+    const { key: keyHex } = await keyResponse.json();
     
-    // 2. Parse Structured Payload
-    // [ Version (1) ] [ IV (12) ] [ Tag (16) ] [ Ciphertext (N) ]
+    // 4. Parse Structured Payload
+    // [ Version (1) ] [ IV (12) ] [ Ciphertext........ + Tag (16) ]
     const view = new DataView(encryptedBuffer);
     const version = view.getUint8(0);
     
     if (version !== 1) throw new Error('UnknownVersion');
     
     const iv = encryptedBuffer.slice(1, 13);
-    const tag = encryptedBuffer.slice(13, 29);
-    const ciphertext = encryptedBuffer.slice(29);
+    const ciphertextWithTag = encryptedBuffer.slice(13); // Rest is Ciphertext + Tag
     
-    // 3. Import Key (Web Crypto API)
+    // 5. Import Key (Web Crypto API)
     const keyBytes = matchKeyHexToBytes(keyHex); // Helper to convert hex string to Uint8Array
     const cryptoKey = await window.crypto.subtle.importKey(
       'raw', 
@@ -1033,19 +1209,15 @@ export async function loadAndDecryptPhoto(shortCode: string, keyHex: string): Pr
       ['decrypt']
     );
     
-    // 4. Decrypt (GCM automatically verifies Auth Tag)
-    // CRITICAL: WebCrypto requires the Auth Tag to be appended to the Ciphertext
-    // and explicitly requires tagLength: 128 in the algorithm params.
-    const dataToDecrypt = concatBuffers(ciphertext, tag);
-    
+    // 6. Decrypt (Web Crypto automatically validates tag at end of buffer)
     const decryptedBuffer = await window.crypto.subtle.decrypt(
       { 
         name: 'AES-GCM', 
-        iv: iv, // MUST be 12 bytes
-        tagLength: 128 // MUST be explicit
+        iv: iv 
+        // tagLength is implicit (128) when tag is part of ciphertext
       },
       cryptoKey,
-      dataToDecrypt
+      ciphertextWithTag // Tag is integrated here
     );
     
     // 5. Convert to Blob URL
@@ -1073,7 +1245,8 @@ We treat decryption failure as a first-class state, never attempting partial ren
 - [x] **HTTPS/TLS** - All API communication encrypted in transit
 - [x] **Client-side encryption** - AES-256 before upload
 - [x] **Encryption at rest** - S3/R2 server-side encryption
-- [x] **Database encryption** - Sensitive fields encrypted (pgcrypto)
+- [x] **Database encryption** - Keys protected by Supabase Encryption-at-Rest + Strict RLS
+- [ ] **App-layer key encryption** - Future enhancement (pgcrypto/KMS envelope)
 - [x] **EXIF stripping** - Metadata removed before encryption
 - [x] **Unique keys** - Each photo has unique encryption key
 - [x] **Secure deletion** - Encrypted data deleted on expiration/revocation
