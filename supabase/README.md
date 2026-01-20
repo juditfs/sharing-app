@@ -132,6 +132,112 @@ The `photos` bucket is created automatically via migration.
 3. Confirm it's set to **Private** (not public)
 4. RLS policies are applied via migration
 
+## Edge Function API Reference
+
+### POST /functions/v1/create-link
+
+Creates a new shareable link for an encrypted photo.
+
+**Authentication**: Required (Bearer token)
+
+**Request Body**:
+```json
+{
+  "photoUrl": "string (required)",
+  "thumbnailUrl": "string (optional)",
+  "encryptionKey": "string (required)"
+}
+```
+
+**Field Specifications**:
+- `photoUrl`: Storage path to encrypted photo (e.g., `user-id/photo-abc123.jpg`)
+- `thumbnailUrl`: Storage path to encrypted thumbnail (optional)
+- `encryptionKey`: 64 hexadecimal characters (32 bytes) - AES-256 key
+
+**Success Response** (200):
+```json
+{
+  "shortCode": "aBc12XyZ",
+  "shareUrl": "http://localhost:3000/share/aBc12XyZ"
+}
+```
+
+**Error Responses**:
+- `400 Bad Request`: Missing required fields or invalid encryption key format
+- `401 Unauthorized`: Missing or invalid authorization header
+- `500 Internal Server Error`: Failed to create link or store encryption key
+
+**Example**:
+```bash
+curl -X POST 'https://your-project.supabase.co/functions/v1/create-link' \
+  -H 'Authorization: Bearer YOUR_ANON_KEY' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "photoUrl": "550e8400-e29b-41d4-a716-446655440000/photo.jpg",
+    "thumbnailUrl": "550e8400-e29b-41d4-a716-446655440000/thumb.jpg",
+    "encryptionKey": "a1b2c3d4e5f6789012345678901234567890123456789012345678901234abcd"
+  }'
+```
+
+---
+
+### GET /functions/v1/get-link
+
+Retrieves link metadata or encryption key for a shared photo.
+
+**Authentication**: Not required (public endpoint)
+
+**Query Parameters**:
+- `shortCode` (required): 8-character link code
+- `action` (required): Either `metadata` or `key`
+
+**Action: 'metadata'**
+
+Returns signed URL and metadata for the photo.
+
+**Success Response** (200):
+```json
+{
+  "signedUrl": "https://...storage.supabase.co/...?token=...",
+  "thumbnailUrl": "https://...storage.supabase.co/...?token=...",
+  "metadata": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "createdAt": "2026-01-19T12:00:00Z"
+  }
+}
+```
+
+**Notes**:
+- Signed URLs are valid for 60 seconds
+- `thumbnailUrl` is optional (only if thumbnail exists)
+
+**Action: 'key'**
+
+Returns the encryption key for decrypting the photo.
+
+**Success Response** (200):
+```json
+{
+  "key": "a1b2c3d4e5f6789012345678901234567890123456789012345678901234abcd"
+}
+```
+
+**Error Responses**:
+- `400 Bad Request`: Missing or invalid parameters
+- `404 Not Found`: Link not found or encryption key not found
+- `500 Internal Server Error`: Failed to generate signed URL
+
+**Examples**:
+```bash
+# Get metadata
+curl 'https://your-project.supabase.co/functions/v1/get-link?shortCode=aBc12XyZ&action=metadata'
+
+# Get encryption key
+curl 'https://your-project.supabase.co/functions/v1/get-link?shortCode=aBc12XyZ&action=key'
+```
+
+---
+
 ## Testing Edge Functions
 
 ### Test create-link
@@ -142,7 +248,7 @@ curl -X POST 'http://localhost:54321/functions/v1/create-link' \
   -H 'Content-Type: application/json' \
   -d '{
     "photoUrl": "user-id/photo.jpg",
-    "encryptionKey": "abcd1234..."
+    "encryptionKey": "a1b2c3d4e5f6789012345678901234567890123456789012345678901234abcd"
   }'
 ```
 

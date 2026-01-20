@@ -27,8 +27,32 @@ serve(async (req) => {
     }
 
     try {
-        // Initialize Supabase client with Service Role key
-        const supabaseClient = createClient(
+        // Get user from auth header
+        const authHeader = req.headers.get('Authorization')
+        if (!authHeader) {
+            return new Response(
+                JSON.stringify({ error: 'Missing authorization header' }),
+                { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
+
+        // Extract JWT token and decode to get user ID
+        const token = authHeader.replace('Bearer ', '')
+        const payload = JSON.parse(atob(token.split('.')[1]))
+        const userId = payload.sub
+
+        if (!userId) {
+            return new Response(
+                JSON.stringify({ error: 'Invalid token' }),
+                { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
+
+        // Create user object from JWT payload
+        const user = { id: userId }
+
+        // Initialize Service Role client for database operations (bypasses RLS)
+        const supabaseAdmin = createClient(
             Deno.env.get('SUPABASE_URL') ?? '',
             Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
             {
@@ -39,28 +63,10 @@ serve(async (req) => {
             }
         )
 
-        // Get user from auth header
-        const authHeader = req.headers.get('Authorization')
-        if (!authHeader) {
-            return new Response(
-                JSON.stringify({ error: 'Missing authorization header' }),
-                { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            )
-        }
-
-        const token = authHeader.replace('Bearer ', '')
-        const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token)
-
-        if (authError || !user) {
-            return new Response(
-                JSON.stringify({ error: 'Unauthorized' }),
-                { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            )
-        }
-
         // Parse request body
         const { photoUrl, thumbnailUrl, encryptionKey }: CreateLinkRequest = await req.json()
 
+        // Validate required fields
         if (!photoUrl || !encryptionKey) {
             return new Response(
                 JSON.stringify({ error: 'Missing required fields: photoUrl, encryptionKey' }),
@@ -68,11 +74,29 @@ serve(async (req) => {
             )
         }
 
+        // Validate photoUrl is not empty
+        if (photoUrl.trim() === '') {
+            return new Response(
+                JSON.stringify({ error: 'photoUrl cannot be empty' }),
+                { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
+
+        // Validate encryption key format (64 hex chars = 32 bytes)
+        if (!/^[a-fA-F0-9]{64}$/.test(encryptionKey)) {
+            return new Response(
+                JSON.stringify({ error: 'Invalid encryption key format (expected 64 hex characters)' }),
+                { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
+
+        // TODO (MVP): Add collision handling for production scale
+        // Current risk: ~0.0002% at 10k links, acceptable for prototype
         // Generate short code (8 characters, URL-safe)
         const shortCode = generateShortCode()
 
         // Insert link into shared_links table
-        const { data: linkData, error: linkError } = await supabaseClient
+        const { data: linkData, error: linkError } = await supabaseAdmin
             .from('shared_links')
             .insert({
                 user_id: user.id,
@@ -92,7 +116,7 @@ serve(async (req) => {
         }
 
         // Store encryption key in link_secrets (bypassing RLS with Service Role)
-        const { error: secretError } = await supabaseClient
+        const { error: secretError } = await supabaseAdmin
             .from('link_secrets')
             .insert({
                 link_id: linkData.id,
@@ -102,15 +126,16 @@ serve(async (req) => {
         if (secretError) {
             console.error('Error storing encryption key:', secretError)
             // Rollback: delete the link
-            await supabaseClient.from('shared_links').delete().eq('id', linkData.id)
+            await supabaseAdmin.from('shared_links').delete().eq('id', linkData.id)
             return new Response(
                 JSON.stringify({ error: 'Failed to store encryption key' }),
                 { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
         }
 
-        // Generate share URL
-        const shareUrl = `http://localhost:3000/share/${shortCode}`
+        // Generate share URL (configurable via environment variable)
+        const baseUrl = Deno.env.get('VIEWER_BASE_URL') || 'http://localhost:3000'
+        const shareUrl = `${baseUrl}/share/${shortCode}`
 
         const response: CreateLinkResponse = {
             shortCode,

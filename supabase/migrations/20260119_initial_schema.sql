@@ -1,8 +1,8 @@
 -- ShareSafe Prototype: Initial Database Schema
 -- Creates minimal tables for encrypted photo sharing
 
--- Enable UUID extension
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+-- Enable pgcrypto extension (available by default in Supabase)
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- =========================================
 -- TABLES
@@ -13,7 +13,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Shared Links table
 CREATE TABLE shared_links (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
   short_code TEXT UNIQUE NOT NULL,
   photo_url TEXT NOT NULL,
@@ -39,6 +39,9 @@ CREATE INDEX idx_shared_links_short_code ON shared_links(short_code);
 -- Index for user's links
 CREATE INDEX idx_shared_links_user_id ON shared_links(user_id);
 
+-- Index for temporal queries (sorting by creation date)
+CREATE INDEX idx_shared_links_created_at ON shared_links(created_at DESC);
+
 -- =========================================
 -- ROW LEVEL SECURITY (RLS)
 -- =========================================
@@ -56,29 +59,29 @@ CREATE POLICY "shared_links_insert_own"
 ON shared_links 
 FOR INSERT 
 TO authenticated 
-WITH CHECK (auth.uid() = user_id);
+WITH CHECK ((SELECT auth.uid()) = user_id);
 
 -- Policy: Users can select their own links
 CREATE POLICY "shared_links_select_own" 
 ON shared_links 
 FOR SELECT 
 TO authenticated 
-USING (auth.uid() = user_id);
+USING ((SELECT auth.uid()) = user_id);
 
 -- Policy: Users can update their own links
 CREATE POLICY "shared_links_update_own" 
 ON shared_links 
 FOR UPDATE 
 TO authenticated 
-USING (auth.uid() = user_id) 
-WITH CHECK (auth.uid() = user_id);
+USING ((SELECT auth.uid()) = user_id) 
+WITH CHECK ((SELECT auth.uid()) = user_id);
 
 -- Policy: Users can delete their own links
 CREATE POLICY "shared_links_delete_own" 
 ON shared_links 
 FOR DELETE 
 TO authenticated 
-USING (auth.uid() = user_id);
+USING ((SELECT auth.uid()) = user_id);
 
 -- Policy: Explicitly deny all anonymous access
 CREATE POLICY "shared_links_deny_anon" 
@@ -118,7 +121,7 @@ FOR INSERT
 TO authenticated 
 WITH CHECK (
   bucket_id = 'photos' 
-  AND (storage.foldername(name))[1] = auth.uid()::text
+  AND (storage.foldername(name))[1] = (SELECT auth.uid())::text
 );
 
 -- Policy: Users can delete their own files
@@ -128,7 +131,7 @@ FOR DELETE
 TO authenticated 
 USING (
   bucket_id = 'photos' 
-  AND (storage.foldername(name))[1] = auth.uid()::text
+  AND (storage.foldername(name))[1] = (SELECT auth.uid())::text
 );
 
 -- Policy: Deny all direct reads (access via signed URLs only)

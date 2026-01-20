@@ -35,9 +35,14 @@ serve(async (req) => {
         return new Response('ok', { headers: corsHeaders })
     }
 
+    // TODO (MVP): Add rate limiting to prevent brute force attacks
+    // Recommended: 10 requests/minute per IP using Supabase built-in rate limiting
+    // For prototype (localhost only), this is acceptable risk
+    // Risk: Brute force enumeration of short codes, DoS attacks
+
     try {
-        // Initialize Supabase client with Service Role key
-        const supabaseClient = createClient(
+        // Initialize Supabase client with Service Role key (for bypassing RLS)
+        const supabaseAdmin = createClient(
             Deno.env.get('SUPABASE_URL') ?? '',
             Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
             {
@@ -68,7 +73,7 @@ serve(async (req) => {
         }
 
         // Fetch link from database (using Service Role to bypass RLS)
-        const { data: linkData, error: linkError } = await supabaseClient
+        const { data: linkData, error: linkError } = await supabaseAdmin
             .from('shared_links')
             .select('*')
             .eq('short_code', shortCode)
@@ -84,7 +89,7 @@ serve(async (req) => {
         // Handle different actions
         if (action === 'metadata') {
             // Generate signed URL for photo (valid for 60 seconds)
-            const { data: signedUrlData, error: signedUrlError } = await supabaseClient
+            const { data: signedUrlData, error: signedUrlError } = await supabaseAdmin
                 .storage
                 .from('photos')
                 .createSignedUrl(extractStoragePath(linkData.photo_url), 60)
@@ -100,7 +105,7 @@ serve(async (req) => {
             // Generate signed URL for thumbnail if it exists
             let thumbnailSignedUrl: string | undefined
             if (linkData.thumbnail_url) {
-                const { data: thumbData } = await supabaseClient
+                const { data: thumbData } = await supabaseAdmin
                     .storage
                     .from('photos')
                     .createSignedUrl(extractStoragePath(linkData.thumbnail_url), 60)
@@ -124,7 +129,7 @@ serve(async (req) => {
 
         } else if (action === 'key') {
             // Fetch encryption key from link_secrets
-            const { data: secretData, error: secretError } = await supabaseClient
+            const { data: secretData, error: secretError } = await supabaseAdmin
                 .from('link_secrets')
                 .select('encryption_key')
                 .eq('link_id', linkData.id)
@@ -158,11 +163,26 @@ serve(async (req) => {
 })
 
 /**
- * Extract storage path from full Supabase storage URL
- * Example: https://xxx.supabase.co/storage/v1/object/public/photos/user-id/file.jpg
- * Returns: user-id/file.jpg
+ * Extract storage path from full Supabase storage URL or return path as-is
+ * Handles both full URLs and relative storage paths
+ * 
+ * Examples:
+ *   - Full URL: https://xxx.supabase.co/storage/v1/object/public/photos/user-id/file.jpg
+ *     Returns: user-id/file.jpg
+ *   - Relative path: user-id/file.jpg
+ *     Returns: user-id/file.jpg
  */
 function extractStoragePath(url: string): string {
-    const parts = url.split('/photos/')
-    return parts[parts.length - 1]
+    // If it's already a path (no protocol), return as-is
+    if (!url.startsWith('http')) {
+        return url
+    }
+
+    // Extract path from full URL using regex
+    const match = url.match(/\/photos\/(.+)$/)
+    if (!match) {
+        throw new Error(`Invalid storage URL format: ${url}`)
+    }
+
+    return match[1]
 }

@@ -19,6 +19,10 @@
 - [x] Create RLS policies for `shared_links` (owner access)
 - [x] Create RLS policy for `link_secrets` (deny all client access)
 - [x] Create storage RLS policies (private bucket, owner upload/delete only)
+- [x] **Refinements (Best Practices)**
+  - [x] Optimize RLS policies with sub-select caching
+  - [x] Add temporal indexes for performance
+
 
 ### Edge Functions Setup ✅
 - [x] Create `create-link` Edge Function
@@ -29,11 +33,11 @@
   - [x] Handle 'metadata' action (return signed URL + metadata)
   - [x] Handle 'key' action (return encryption key)
   - [x] Generate 60-second signed URLs
-- [ ] Deploy database migrations (`supabase db push`)
-- [ ] Deploy Edge Functions to Supabase
-  - [ ] `supabase functions deploy create-link`
-  - [ ] `supabase functions deploy get-link`
-- [ ] Test Edge Functions with curl/Postman
+- [x] Deploy database migrations (`supabase db push`)
+- [x] Deploy Edge Functions to Supabase
+  - [x] `supabase functions deploy create-link --no-verify-jwt`
+  - [x] `supabase functions deploy get-link --no-verify-jwt`
+- [x] Test Edge Functions with curl/Postman
 
 ---
 

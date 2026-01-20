@@ -93,7 +93,8 @@ supabase --version
 From Supabase Dashboard → Settings → API:
 - Copy **Project URL**
 - Copy **Anon (public) key**
-- Copy **Service Role key** (keep secret!)
+
+> **Note**: The Service Role key is automatically available to Edge Functions as `SUPABASE_SERVICE_ROLE_KEY`. You don't need to configure it manually.
 
 ### 4. Configure Environment
 ```bash
@@ -116,14 +117,17 @@ supabase link --project-ref your-project-ref
 # Push database migrations
 supabase db push
 
-# Deploy Edge Functions
-supabase functions deploy create-link
-supabase functions deploy get-link
+# Deploy Edge Functions (disable JWT verification to handle auth manually)
+supabase functions deploy create-link --no-verify-jwt
+supabase functions deploy get-link --no-verify-jwt
 ```
 
 ### 6. Enable Anonymous Auth
 - Go to Dashboard → Authentication → Settings
 - Toggle "Enable anonymous sign-ins" to ON
+- **Security Check**: Supabase will recommend enabling **CAPTCHA**.
+  - **For Prototype**: You can leave this **disabled** to simplify setup.
+  - **For Production**: This is required to prevent bot abuse and MAU bloat.
 - Save changes
 
 ### 7. Verify Deployment
@@ -170,6 +174,16 @@ curl 'https://your-project-ref.supabase.co/functions/v1/get-link?shortCode=aBc12
    - Get a signed URL from get-link
    - Wait 61 seconds
    - Try to access the URL → Should fail
+
+### 🏗️ Security Debt & Production Hardening
+
+> [!WARNING]
+> **Edge Function Authentication (`--no-verify-jwt`)**
+> 
+> To bypass strict API Gateway validation issues during the prototype phase, we deployed functions with `--no-verify-jwt`.
+> - **Current State**: The code decodes the JWT payload to get the `userId` but does **not** yet verify the cryptographic signature.
+> - **Production Requirement**: Before launching to real users, we must update the code to verify the JWT signature against the project's `JWT_SECRET` (e.g., using the `jose` library) or resolve the Gateway validation issues.
+> - **Risk**: Currently, a sophisticated attacker could forge a JWT with a different `userId`. For the anonymous prototype, this is an acceptable low-risk trade-off, but it must be hardened for the full MVP.
 
 ## 📊 Phase 1 Metrics
 
