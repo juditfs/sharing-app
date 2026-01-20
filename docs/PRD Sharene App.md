@@ -1,4 +1,4 @@
-# PRD ShareSafe (temporary name) Controlled Photo Sharing App
+# PRD Sharene (temporary name) Controlled Photo Sharing App
 
 ## **Introduction**
 
@@ -266,12 +266,12 @@ User defines sharing groups with custom defaults. We can investigate deep linkin
 * Next time: Show "Recently shared with: Family Group"  
 * Tap it → Opens WhatsApp (via deep link)
 
-**User Flow \- ShareSafe App (Temporary name)**
+**User Flow \- Sharene App (Temporary name)**
 
 ### **Primary flow \- Share Picture or Video**
 
 1. Select photo  
-   1. Launch ShareSafe  
+   1. Launch Sharene  
       1. Choose photo from gallery  
       2. A link is created  
       3. The link is created and copied to clipboard with smart defaults: a preview of the image with a disclaimer that the image thumbnail will be shared with the messaging app, a default text: ‘user’ shared a photo, expiry: never, device limit: none.   
@@ -281,7 +281,7 @@ User defines sharing groups with custom defaults. We can investigate deep linkin
    2. From System Photos App  
       1. Select photo  
       2. Click share  
-      3. System share screen \- Choose to share with ShareSafe  
+      3. System share screen \- Choose to share with Sharene  
       4. A link is created.  
          1. The link is created and copied to clipboard with smart defaults: a preview of the image with a disclaimer that the image thumbnail will be shared with the messaging app,  a default text: ‘user’ shared a photo, expiry: never, device limit: none.   
          2. If the user changes the defaults the link is updated.  
@@ -300,7 +300,7 @@ User defines sharing groups with custom defaults. We can investigate deep linkin
 
 ### **Manage Links**
 
-1. Open ShareSafe app  
+1. Open Sharene app  
    1. Links Dashboard where the user can see all links active, revoked or expired.  
    2. For each link the user can see:  
       1. View count  
@@ -316,7 +316,7 @@ User defines sharing groups with custom defaults. We can investigate deep linkin
    1. Shows value proposition  
       1. Share photos without losing control  
       2. Key benefits explained  
-      3. Visual examples of the experience of sharing photos with ShareSafe  
+      3. Visual examples of the experience of sharing photos with Sharene  
 3. Authentication  
    1. Google Sign-In  
    2. Apple Sign-In  

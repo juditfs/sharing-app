@@ -1,4 +1,4 @@
-# ShareSafe Prototype Plan ("Walking Skeleton")
+# Sharene Prototype Plan ("Walking Skeleton")
 
 **Goal:** Prove the core securely-encrypted sharing loop end-to-end with minimal UI and zero optional features.
 
@@ -29,7 +29,7 @@
 
 ✅ **Share Sheet Integration** (iOS only):
 - Receive photos from iOS Photos app
-- Process and share via ShareSafe
+- Process and share via Sharene
 
 ✅ **Basic UX**:
 - Copy Link button (auto-copy to clipboard)
@@ -60,8 +60,8 @@
 ### Flow 2: Share Sheet Integration
 1.  **Sender (iOS Photos App)**
     *   Opens Photos app
-    *   Selects photo → Share → ShareSafe
-    *   ShareSafe app opens with photo pre-loaded
+    *   Selects photo → Share → Sharene
+    *   Sharene app opens with photo pre-loaded
     *   Same processing flow as above
     *   Returns to Photos app after link copied
 
@@ -137,7 +137,7 @@ CREATE TABLE link_secrets (
 
 ### Functional Tests
 1. ✅ **In-App Flow**: Select image on iOS Simulator → Get URL → Open on desktop browser → See decrypted image
-2. ✅ **Share Sheet Flow**: Share from iOS Photos → ShareSafe processes → Get URL → Verify on browser
+2. ✅ **Share Sheet Flow**: Share from iOS Photos → Sharene processes → Get URL → Verify on browser
 3. ✅ **Copy Link**: Tap "Copy Link" → Paste in Notes → Link is correct format
 4. ✅ **Thumbnail**: Verify encrypted thumbnail displays in web viewer (faster load)
 

@@ -1,4 +1,4 @@
-# ShareSafe - Supabase Configuration
+# Sharene - Supabase Configuration
 
 ## Local Development Setup
 

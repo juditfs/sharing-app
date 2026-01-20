@@ -1,4 +1,4 @@
--- ShareSafe Prototype: Initial Database Schema
+-- Sharene Prototype: Initial Database Schema
 -- Creates minimal tables for encrypted photo sharing
 
 -- Enable pgcrypto extension (available by default in Supabase)

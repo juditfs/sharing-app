@@ -1,4 +1,4 @@
-# ShareSafe MVP Implementation Plan
+# Sharene MVP Implementation Plan
 
 A controlled photo sharing app for privacy-conscious parents to share photos via time-limited, revocable links through existing messaging apps.
 
@@ -194,7 +194,7 @@ Custom components built with React Native Paper:
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Card, Text, Badge } from 'react-native-paper';
-import { formatExpiry } from '@sharesafe/shared-utils';
+import { formatExpiry } from '@sharene/shared-utils';
 
 export interface LinkCardProps {
   title: string;
@@ -322,7 +322,7 @@ export const formatExpiry = (expiresAt: Date): string => {
 };
 
 // utils/api-client.ts
-export class ShareSafeAPI {
+export class ShareneAPI {
   private baseUrl: string;
   
   constructor(baseUrl: string) {
@@ -345,7 +345,7 @@ export class ShareSafeAPI {
 ```typescript
 // mobile/App.tsx
 import { PaperProvider } from 'react-native-paper';
-import { theme } from '@sharesafe/shared-components/theme';
+import { theme } from '@sharene/shared-components/theme';
 
 export default function App() {
   return (
@@ -356,7 +356,7 @@ export default function App() {
 }
 
 // mobile/screens/DashboardScreen.tsx
-import { LinkCard } from '@sharesafe/shared-components';
+import { LinkCard } from '@sharene/shared-components';
 import { Button } from 'react-native-paper';
 
 export const DashboardScreen = () => {
@@ -381,7 +381,7 @@ export const DashboardScreen = () => {
 ```typescript
 // viewer/pages/_app.tsx
 import { PaperProvider } from 'react-native-paper';
-import { theme } from '@sharesafe/shared-components/theme';
+import { theme } from '@sharene/shared-components/theme';
 
 export default function App({ Component, pageProps }) {
   return (
@@ -417,7 +417,7 @@ export default function ViewerPage({ link }) {
 ✅ **Consistent UI** - Material Design across mobile and web  
 ✅ **Built-in accessibility** - Paper handles screen readers, focus management  
 ✅ **Cross-platform** - Works with React Native Web for viewer  
-✅ **Shared business logic** - Custom components for ShareSafe-specific features  
+✅ **Shared business logic** - Custom components for Sharene-specific features  
 ✅ **Easy theming** - Customize colors and styles via theme object  
 ✅ **Type-safe** - Full TypeScript support  
 ✅ **Well-documented** - Extensive React Native Paper documentation
@@ -427,7 +427,7 @@ export default function ViewerPage({ link }) {
 ```json
 // package.json (root)
 {
-  "name": "sharesafe-monorepo",
+  "name": "sharene-monorepo",
   "private": true,
   "workspaces": [
     "packages/*",
@@ -439,7 +439,7 @@ export default function ViewerPage({ link }) {
 
 // packages/shared-components/package.json
 {
-  "name": "@sharesafe/shared-components",
+  "name": "@sharene/shared-components",
   "version": "1.0.0",
   "peerDependencies": {
     "react": "^18.0.0",
@@ -578,7 +578,7 @@ CREATE TABLE users (
 CREATE TABLE shared_links (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-  short_code TEXT UNIQUE NOT NULL, -- e.g., "abc123" for sharesafe.app/abc123
+  short_code TEXT UNIQUE NOT NULL, -- e.g., "abc123" for sharene.app/abc123
   
   -- Photo data
   photo_url TEXT NOT NULL, -- Storage URL
@@ -940,7 +940,7 @@ Generate device fingerprint (post-MVP, placeholder for now).
 
 #### **Share Sheet Integration (iOS)**
 1. User shares photo from iOS Photos app
-2. Selects "ShareSafe" from share sheet
+2. Selects "Sharene" from share sheet
 3. App receives photo via `expo-sharing` or `react-native-share`
 4. Opens `LinkCreationScreen` with pre-loaded photo
 5. User configures settings and shares
@@ -990,7 +990,7 @@ npm test
 
 4. **Share Sheet Integration**
    - Open iOS Photos app
-   - Select photo → Share → ShareSafe
+   - Select photo → Share → Sharene
    - Verify app opens with photo loaded
 
 **Recipient Experience Testing**
@@ -1102,7 +1102,7 @@ export class PhotoEncryption {
 
 **Option 1: Key in URL Fragment (Post-MVP - Maximum Privacy)**
 ```
-https://sharesafe.app/v/abc123#key=a1b2c3d4e5f6...
+https://sharene.app/v/abc123#key=a1b2c3d4e5f6...
 ```
 - Fragment (`#key=...`) never sent to server
 - Client-side decryption only
@@ -1119,7 +1119,7 @@ https://sharesafe.app/v/abc123#key=a1b2c3d4e5f6...
 
 **Option 2: Key in Database (MVP Implementation)**
 ```
-https://sharesafe.app/v/abc123
+https://sharene.app/v/abc123
 ```
 - Key retrieved via API call
 - Clean, short URLs

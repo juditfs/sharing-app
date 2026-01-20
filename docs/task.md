@@ -1,4 +1,4 @@
-# ShareSafe Prototype - Task List
+# Sharene Prototype - Task List
 
 ## Phase 1: Infrastructure Setup ✅
 

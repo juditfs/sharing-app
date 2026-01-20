@@ -1,4 +1,4 @@
-# ShareSafe Prototype
+# Sharene Prototype
 
 A privacy-first photo sharing app with end-to-end encryption.
 

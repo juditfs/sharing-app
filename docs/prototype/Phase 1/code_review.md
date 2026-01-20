@@ -193,7 +193,7 @@ const shareUrl = `${baseUrl}/share/${shortCode}`
 **Add to `.env.example`**:
 ```env
 # Edge Function Configuration
-VIEWER_BASE_URL=https://sharesafe.app
+VIEWER_BASE_URL=https://sharene.app
 ```
 
 ---
