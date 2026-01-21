@@ -82,7 +82,6 @@ export default function ViewPage() {
         <PhotoViewer
             photoUrl={photoUrl!}
             shareText={metadata.shareText}
-            allowDownload={metadata.allowDownload}
         />
     );
 }
