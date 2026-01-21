@@ -35,3 +35,10 @@ yarn-error.log*
 *.swp
 *.swo
 *~
+*.log
+
+# Test Data
+test-data/*.jpg
+test-data/*.txt
+test-results/*.md
+!test-results/test-report-template.md
