@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { getLinkData, downloadEncryptedPhoto } from '@/lib/api';
+import { getLinkData, downloadEncryptedPhoto, LinkData } from '@/lib/api';
 import { decryptPhoto } from '@/lib/crypto';
 import PhotoViewer from '@/components/PhotoViewer';
 import LoadingState from '@/components/LoadingState';
@@ -13,9 +13,12 @@ export default function ViewPage() {
     const shortCode = searchParams.get('code');
 
     const [photoUrl, setPhotoUrl] = useState<string | null>(null);
-    const [metadata, setMetadata] = useState<any>(null);
+    const [metadata, setMetadata] = useState<LinkData | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+
+    // Use ref to track object URL for proper cleanup
+    const photoUrlRef = useRef<string | null>(null);
 
     useEffect(() => {
         if (!shortCode) {
@@ -50,11 +53,18 @@ export default function ViewPage() {
 
                 // Create object URL for display
                 const objectUrl = URL.createObjectURL(decryptedBlob);
+                photoUrlRef.current = objectUrl;
                 setPhotoUrl(objectUrl);
                 setMetadata(linkData);
             } catch (err: any) {
                 console.error('Error loading photo:', err);
-                setError(err.message || 'not-found');
+
+                // Map specific errors to user-friendly messages
+                if (err.message === 'decryption-failed') {
+                    setError('decryption-failed');
+                } else {
+                    setError(err.message || 'not-found');
+                }
             } finally {
                 setLoading(false);
             }
@@ -64,8 +74,9 @@ export default function ViewPage() {
 
         // Cleanup object URL on unmount
         return () => {
-            if (photoUrl) {
-                URL.revokeObjectURL(photoUrl);
+            if (photoUrlRef.current) {
+                URL.revokeObjectURL(photoUrlRef.current);
+                photoUrlRef.current = null;
             }
         };
     }, [shortCode]);
@@ -81,7 +92,7 @@ export default function ViewPage() {
     return (
         <PhotoViewer
             photoUrl={photoUrl!}
-            shareText={metadata.shareText}
+            shareText={metadata!.shareText}
         />
     );
 }

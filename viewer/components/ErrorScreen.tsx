@@ -19,6 +19,11 @@ export default function ErrorScreen({ error }: ErrorScreenProps) {
             message: 'This link is invalid or the photo has been deleted.',
             icon: '❓',
         },
+        'decryption-failed': {
+            title: 'Decryption Failed',
+            message: 'The photo could not be decrypted. The encryption key may be incorrect or the data corrupted.',
+            icon: '🔑',
+        },
     };
 
     const errorInfo = errorMessages[error as keyof typeof errorMessages] || errorMessages['not-found'];
