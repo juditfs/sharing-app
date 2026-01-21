@@ -53,10 +53,9 @@ serve(async (req) => {
             }
         )
 
-        // Parse query parameters
-        const url = new URL(req.url)
-        const shortCode = url.searchParams.get('shortCode')
-        const action = url.searchParams.get('action') as ActionType
+        // Parse request body (from supabase.functions.invoke)
+        const body: GetLinkRequest = await req.json()
+        const { shortCode, action } = body
 
         if (!shortCode || !action) {
             return new Response(
@@ -119,6 +118,11 @@ serve(async (req) => {
                 metadata: {
                     id: linkData.id,
                     createdAt: linkData.created_at,
+                    // Additional fields for the viewer
+                    shareText: linkData.share_text || 'Shared photo',
+                    allowDownload: linkData.allow_download !== false,
+                    isRevoked: linkData.is_revoked || false,
+                    expiresAt: linkData.expires_at || null,
                 }
             }
 

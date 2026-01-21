@@ -134,8 +134,9 @@ serve(async (req) => {
         }
 
         // Generate share URL (configurable via environment variable)
-        const baseUrl = Deno.env.get('VIEWER_BASE_URL') || 'http://localhost:3000'
-        const shareUrl = `${baseUrl}/share/${shortCode}`
+        // Production URL on Vercel
+        const baseUrl = Deno.env.get('VIEWER_BASE_URL') || 'https://viewer-rho-seven.vercel.app'
+        const shareUrl = `${baseUrl}/view?code=${shortCode}`
 
         const response: CreateLinkResponse = {
             shortCode,
