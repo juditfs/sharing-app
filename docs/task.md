@@ -133,6 +133,19 @@
 
 ## Phase 4: End-to-End Testing
 
+### Test Infrastructure Setup ✅
+- [x] Create test scripts directory
+- [x] Create automated test suite
+- [x] Create manual test checklist
+- [x] Create test data directory
+- [x] Create test report template
+
+### Automated Tests ✅
+- [x] Environment verification (Supabase connection, dependencies)
+- [x] Security validation (RLS policies on link_secrets and shared_links)
+- [x] API flow tests (Edge Functions deployment and accessibility)
+- [x] Image processing test framework
+
 ### Functional Tests
 - [ ] **In-App Flow**: Select image → Get URL → Open in browser → Verify decrypted image displays
 - [ ] **Share Sheet Flow**: Share from Photos app → Process → Get URL → Verify in browser
@@ -140,8 +153,9 @@
 - [ ] **Thumbnail**: Verify encrypted thumbnail loads in web viewer
 
 ### Security Validation
+- [x] **RLS Policies**: Verified link_secrets and shared_links are protected ✅
 - [ ] **Encrypted Storage**: View raw file in Supabase Storage → Confirm encrypted (garbage data)
-- [ ] **Key Separation**: Attempt to query `link_secrets` via client SDK → Confirm RLS blocks
+- [ ] **Key Separation**: Attempt to query `link_secrets` via client SDK → Confirm RLS blocks (automated test passed ✅)
 - [ ] **RLS Enforcement**: Attempt to access another user's `shared_links` → Confirm blocked
 - [ ] **Signed URL Expiry**: Wait 60+ seconds → Try to re-fetch → Confirm expired
 
