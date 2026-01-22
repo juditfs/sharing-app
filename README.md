@@ -65,6 +65,7 @@ For manual testing (Share Sheet, EXIF), see: [Testing Guide](./test-scripts/READ
 
 - **[Project Plan](./docs/prototype_plan.md)**: Original vision and requirements.
 - **[Implementation Plan](./docs/implementation_plan.md)**: Technical architecture details.
+- **[Engineering Review](./docs/engineering_review.md)**: Comprehensive code review and best practices.
 - **[Deviations & Learnings](./docs/DEVIATIONS_AND_LEARNINGS.md)**: What changed and what we learned.
 - **[Task List](./docs/task.md)**: Detailed progress tracking.
 
