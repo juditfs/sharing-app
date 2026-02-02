@@ -19,6 +19,8 @@ interface GetLinkRequest {
 interface MetadataResponse {
     signedUrl: string
     thumbnailUrl?: string
+    shareText: string
+    allowDownload: boolean
     metadata: {
         id: string
         createdAt: string
@@ -85,8 +87,32 @@ serve(async (req) => {
             )
         }
 
+        // CRITICAL: Check revocation and expiry BEFORE returning anything
+        if (linkData.is_revoked) {
+            return new Response(
+                JSON.stringify({ error: 'This link has been revoked by the owner' }),
+                { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
+
+        if (linkData.expires_at && new Date(linkData.expires_at) < new Date()) {
+            return new Response(
+                JSON.stringify({ error: 'This link has expired' }),
+                { status: 410, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
+
         // Handle different actions
         if (action === 'metadata') {
+            // Increment view count ONLY on metadata action (first call)
+            await supabaseAdmin
+                .from('shared_links')
+                .update({
+                    view_count: (linkData.view_count || 0) + 1,
+                    last_accessed_at: new Date().toISOString(),
+                })
+                .eq('id', linkData.id)
+
             // Generate signed URL for photo (valid for 60 seconds)
             const { data: signedUrlData, error: signedUrlError } = await supabaseAdmin
                 .storage
@@ -115,14 +141,11 @@ serve(async (req) => {
             const response: MetadataResponse = {
                 signedUrl: signedUrlData.signedUrl,
                 thumbnailUrl: thumbnailSignedUrl,
+                shareText: linkData.share_text || 'shared a photo',
+                allowDownload: linkData.allow_download || false,
                 metadata: {
                     id: linkData.id,
                     createdAt: linkData.created_at,
-                    // Additional fields for the viewer
-                    shareText: linkData.share_text || 'Shared photo',
-                    allowDownload: linkData.allow_download !== false,
-                    isRevoked: linkData.is_revoked || false,
-                    expiresAt: linkData.expires_at || null,
                 }
             }
 
@@ -132,6 +155,27 @@ serve(async (req) => {
             )
 
         } else if (action === 'key') {
+            // Re-check revocation/expiry (in case it changed between calls)
+            const { data: freshLink } = await supabaseAdmin
+                .from('shared_links')
+                .select('is_revoked, expires_at')
+                .eq('id', linkData.id)
+                .single()
+
+            if (freshLink?.is_revoked) {
+                return new Response(
+                    JSON.stringify({ error: 'This link has been revoked by the owner' }),
+                    { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                )
+            }
+
+            if (freshLink?.expires_at && new Date(freshLink.expires_at) < new Date()) {
+                return new Response(
+                    JSON.stringify({ error: 'This link has expired' }),
+                    { status: 410, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                )
+            }
+
             // Fetch encryption key from link_secrets
             const { data: secretData, error: secretError } = await supabaseAdmin
                 .from('link_secrets')

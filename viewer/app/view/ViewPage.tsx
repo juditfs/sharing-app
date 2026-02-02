@@ -30,9 +30,13 @@ export default function ViewPage() {
         async function loadPhoto() {
             try {
                 setLoading(true);
+                const startTime = performance.now();
+                console.log('👀 [PERF] Starting photo view workflow');
 
                 // Fetch link metadata and encryption key
+                const t1 = performance.now();
                 const linkData = await getLinkData(shortCode!);
+                console.log(`⏱️  [PERF] Fetch metadata + key: ${(performance.now() - t1).toFixed(1)}ms`);
 
                 // Check if link is valid
                 if (linkData.isRevoked) {
@@ -46,16 +50,23 @@ export default function ViewPage() {
                 }
 
                 // Download encrypted photo
+                const t2 = performance.now();
                 const encryptedData = await downloadEncryptedPhoto(linkData.signedPhotoUrl);
+                console.log(`⏱️  [PERF] Download encrypted blob (${(encryptedData.byteLength / 1024).toFixed(1)} KB): ${(performance.now() - t2).toFixed(1)}ms`);
 
                 // Decrypt client-side
+                const t3 = performance.now();
                 const decryptedBlob = await decryptPhoto(encryptedData, linkData.encryptionKey);
+                console.log(`⏱️  [PERF] Client-side decryption: ${(performance.now() - t3).toFixed(1)}ms`);
 
                 // Create object URL for display
                 const objectUrl = URL.createObjectURL(decryptedBlob);
                 photoUrlRef.current = objectUrl;
                 setPhotoUrl(objectUrl);
                 setMetadata(linkData);
+
+                const totalTime = performance.now() - startTime;
+                console.log(`✅ [PERF] Total view time: ${totalTime.toFixed(1)}ms (${(totalTime / 1000).toFixed(2)}s)`);
             } catch (err: any) {
                 console.error('Error loading photo:', err);
 

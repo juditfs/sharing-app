@@ -13,6 +13,10 @@ interface CreateLinkRequest {
     photoUrl: string
     thumbnailUrl?: string
     encryptionKey: string
+    expiry?: '1h' | '1d' | '1w' | '1m' | '1y' | string // ISO date for custom
+    allowDownload?: boolean
+    shareText?: string
+    publicThumbnailUrl?: string // Unencrypted thumbnail for WhatsApp previews
 }
 
 interface CreateLinkResponse {
@@ -29,29 +33,17 @@ serve(async (req) => {
     try {
         // Get user from auth header
         const authHeader = req.headers.get('Authorization')
+        console.log('Authorization header present:', !!authHeader)
+
         if (!authHeader) {
+            console.error('Missing Authorization header')
             return new Response(
                 JSON.stringify({ error: 'Missing authorization header' }),
                 { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
         }
 
-        // Extract JWT token and decode to get user ID
-        const token = authHeader.replace('Bearer ', '')
-        const payload = JSON.parse(atob(token.split('.')[1]))
-        const userId = payload.sub
-
-        if (!userId) {
-            return new Response(
-                JSON.stringify({ error: 'Invalid token' }),
-                { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            )
-        }
-
-        // Create user object from JWT payload
-        const user = { id: userId }
-
-        // Initialize Service Role client for database operations (bypasses RLS)
+        // Initialize Service Role client for JWT verification
         const supabaseAdmin = createClient(
             Deno.env.get('SUPABASE_URL') ?? '',
             Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
@@ -63,21 +55,35 @@ serve(async (req) => {
             }
         )
 
-        // Parse request body
-        const { photoUrl, thumbnailUrl, encryptionKey }: CreateLinkRequest = await req.json()
+        // Extract token from Authorization header
+        const token = authHeader.replace('Bearer ', '')
+        const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token)
+
+        if (authError || !user) {
+            console.error('JWT verification failed:', authError?.message || 'No user')
+            return new Response(
+                JSON.stringify({ error: 'Invalid or expired token' }),
+                { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
+
+        console.log('User authenticated:', user.id)
+
+        // Parse request body first
+        const {
+            photoUrl,
+            thumbnailUrl,
+            encryptionKey,
+            expiry,
+            allowDownload,
+            shareText,
+            publicThumbnailUrl
+        }: CreateLinkRequest = await req.json()
 
         // Validate required fields
         if (!photoUrl || !encryptionKey) {
             return new Response(
                 JSON.stringify({ error: 'Missing required fields: photoUrl, encryptionKey' }),
-                { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            )
-        }
-
-        // Validate photoUrl is not empty
-        if (photoUrl.trim() === '') {
-            return new Response(
-                JSON.stringify({ error: 'photoUrl cannot be empty' }),
                 { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
         }
@@ -90,10 +96,39 @@ serve(async (req) => {
             )
         }
 
+
+        // Validate storage paths belong to authenticated user (prevent path traversal)
+        const userPrefix = `${user.id}/`
+        if (!photoUrl.startsWith(userPrefix)) {
+            return new Response(
+                JSON.stringify({ error: 'Invalid photo path: must belong to authenticated user' }),
+                { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
+
+        if (thumbnailUrl && !thumbnailUrl.startsWith(userPrefix)) {
+            return new Response(
+                JSON.stringify({ error: 'Invalid thumbnail path: must belong to authenticated user' }),
+                { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
+
+        if (publicThumbnailUrl && !publicThumbnailUrl.startsWith(userPrefix)) {
+            return new Response(
+                JSON.stringify({ error: 'Invalid public thumbnail path: must belong to authenticated user' }),
+                { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
+
         // TODO (MVP): Add collision handling for production scale
         // Current risk: ~0.0002% at 10k links, acceptable for prototype
         // Generate short code (8 characters, URL-safe)
         const shortCode = generateShortCode()
+
+        // Calculate expiry timestamp
+        // TEMP: Default to 10 minutes for verification (user request)
+        // const expiresAt = calculateExpiry(expiry || '1w')
+        const expiresAt = expiry ? calculateExpiry(expiry) : new Date(Date.now() + 10 * 60 * 1000)
 
         // Insert link into shared_links table
         const { data: linkData, error: linkError } = await supabaseAdmin
@@ -103,6 +138,10 @@ serve(async (req) => {
                 short_code: shortCode,
                 photo_url: photoUrl,
                 thumbnail_url: thumbnailUrl || null,
+                expires_at: expiresAt?.toISOString() || null,
+                allow_download: allowDownload ?? false,
+                share_text: shareText || 'shared a photo',
+                public_thumbnail_url: publicThumbnailUrl || null,
             })
             .select()
             .single()
@@ -156,6 +195,39 @@ serve(async (req) => {
         )
     }
 })
+
+/**
+ * Calculate expiry timestamp from expiry option
+ * @param expiry - Expiry option (1h, 1d, 1w, 1m, 1y) or ISO date string
+ * @returns Date object or null for no expiry
+ */
+function calculateExpiry(expiry?: string): Date | null {
+    if (!expiry) return null
+
+    const now = new Date()
+    const expiryMap: Record<string, number> = {
+        '1h': 1 * 60 * 60 * 1000,
+        '1d': 24 * 60 * 60 * 1000,
+        '1w': 7 * 24 * 60 * 60 * 1000,
+        '1m': 30 * 24 * 60 * 60 * 1000,
+        '1y': 365 * 24 * 60 * 60 * 1000,
+    }
+
+    if (expiry in expiryMap) {
+        return new Date(now.getTime() + expiryMap[expiry])
+    }
+
+    // Custom date (ISO string)
+    try {
+        const customDate = new Date(expiry)
+        if (isNaN(customDate.getTime())) {
+            return null
+        }
+        return customDate
+    } catch {
+        return null
+    }
+}
 
 /**
  * Generate a random URL-safe short code

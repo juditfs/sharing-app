@@ -6,7 +6,6 @@ import 'react-native-get-random-values';
 // Encryption version for future compatibility
 const ENCRYPTION_VERSION = 1;
 const IV_LENGTH = 12; // 12 bytes for GCM (96 bits)
-const TAG_LENGTH = 16; // 16 bytes for GCM authentication tag
 
 export async function generateEncryptionKey(): Promise<string> {
     // Generate 256-bit (32 bytes) random key
@@ -19,7 +18,7 @@ export async function generateEncryptionKey(): Promise<string> {
 export async function encryptImage(
     imageUri: string,
     encryptionKey: string
-): Promise<string> {
+): Promise<Uint8Array> {
     // Read image as base64
     const imageData = await FileSystem.readAsStringAsync(imageUri, {
         encoding: 'base64',
@@ -42,16 +41,7 @@ export async function encryptImage(
     payload.set(iv, 1);
     payload.set(ciphertext, 1 + IV_LENGTH);
 
-    // Convert to base64 for storage
-    const encryptedBase64 = bytesToBase64(payload);
-
-    // Write encrypted data to temp file
-    const encryptedUri = `${FileSystem.cacheDirectory}encrypted_${Date.now()}.enc`;
-    await FileSystem.writeAsStringAsync(encryptedUri, encryptedBase64, {
-        encoding: 'base64',
-    });
-
-    return encryptedUri;
+    return payload;
 }
 
 export async function decryptImage(
@@ -92,12 +82,4 @@ function base64ToBytes(base64: string): Uint8Array {
         bytes[i] = binaryString.charCodeAt(i);
     }
     return bytes;
-}
-
-function bytesToBase64(bytes: Uint8Array): string {
-    let binary = '';
-    for (let i = 0; i < bytes.length; i++) {
-        binary += String.fromCharCode(bytes[i]);
-    }
-    return btoa(binary);
 }

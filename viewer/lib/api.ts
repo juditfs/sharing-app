@@ -45,7 +45,7 @@ export async function getLinkData(shortCode: string): Promise<LinkData> {
         ...data.metadata,
         encryptionKey: keyData.key,
         signedPhotoUrl: data.signedUrl,
-        signedThumbnailUrl: data.signedThumbnailUrl,
+        signedThumbnailUrl: data.thumbnailUrl,
     };
 }
 

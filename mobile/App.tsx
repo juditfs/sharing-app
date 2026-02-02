@@ -4,17 +4,44 @@ import { StatusBar } from 'expo-status-bar';
 import * as ImagePicker from 'expo-image-picker';
 import * as Clipboard from 'expo-clipboard';
 import { signInAnonymously } from './lib/auth';
-import { generateEncryptionKey, encryptImage } from './lib/crypto';
-import { processImage } from './lib/imageProcessing';
-import { uploadEncryptedImage, createShareLink } from './lib/upload';
+import { handlePhotoError } from './lib/errorHandling';
+import { processAndUploadPhoto } from './lib/photoWorkflow';
 
 export default function App() {
   const [loading, setLoading] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [sessionReady, setSessionReady] = useState(false);
 
   useEffect(() => {
+    // DEBUG: Check environment and network
+    const checkNetwork = async () => {
+      try {
+        console.log('DEBUG: Checking Supabase connection...');
+        const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
+        console.log('DEBUG: URL configured:', url ? 'YES' : 'NO');
+
+        if (url) {
+          const resp = await fetch(`${url}/auth/v1/health`);
+          console.log('DEBUG: Health status:', resp.status);
+          const text = await resp.text();
+          console.log('DEBUG: Health response body starts with:', text.substring(0, 100));
+        }
+      } catch (e) {
+        console.error('DEBUG: Network check failed:', e);
+      }
+    };
+    checkNetwork();
+
     // Sign in anonymously on app launch
-    signInAnonymously().catch(console.error);
+    signInAnonymously()
+      .then(() => {
+        console.log('Anonymous sign-in successful');
+        setSessionReady(true);
+      })
+      .catch((err) => {
+        console.error('Anonymous sign-in failed:', err);
+        Alert.alert('Authentication Error', 'Failed to initialize session. Please restart the app.');
+      });
   }, []);
 
   const handleTakePhoto = async () => {
@@ -39,46 +66,13 @@ export default function App() {
         return;
       }
 
-      const imageUri = result.assets[0].uri;
-
-      // Process image (resize, strip EXIF)
-      const { processedUri, thumbnailUri } = await processImage(imageUri);
-
-      // Generate encryption key
-      const encryptionKey = await generateEncryptionKey();
-
-      // Encrypt images
-      const encryptedPhotoUri = await encryptImage(processedUri, encryptionKey);
-      const encryptedThumbUri = thumbnailUri
-        ? await encryptImage(thumbnailUri, encryptionKey)
-        : null;
-
-      // Upload to Supabase
-      const { photoPath, thumbnailPath } = await uploadEncryptedImage(
-        encryptedPhotoUri,
-        encryptedThumbUri
-      );
-
-      // Create shareable link
-      const { shareUrl } = await createShareLink(photoPath, thumbnailPath, encryptionKey);
+      // Process and upload using shared workflow
+      const shareUrl = await processAndUploadPhoto(result.assets[0].uri);
 
       setShareUrl(shareUrl);
       Alert.alert('Success!', 'Your photo has been encrypted and uploaded.');
     } catch (error: any) {
-      console.error('Error:', error);
-
-      // Provide specific error messages based on error type
-      if (error?.message?.includes('permission') || error?.message?.includes('Permission')) {
-        Alert.alert('Permission Denied', 'Camera or photo library access is required to share photos.');
-      } else if (error?.message?.includes('network') || error?.message?.includes('Network') || error?.code === 'NETWORK_ERROR') {
-        Alert.alert('Network Error', 'Please check your internet connection and try again.');
-      } else if (error?.message?.includes('encrypt') || error?.message?.includes('decrypt')) {
-        Alert.alert('Encryption Error', 'Failed to encrypt photo. Please try again.');
-      } else if (error?.message?.includes('upload') || error?.message?.includes('storage')) {
-        Alert.alert('Upload Failed', 'Could not upload photo to server. Please try again.');
-      } else {
-        Alert.alert('Error', `Failed to process photo: ${error?.message || 'Unknown error'}`);
-      }
+      handlePhotoError(error);
     } finally {
       setLoading(false);
     }
@@ -102,20 +96,13 @@ export default function App() {
 
       if (result.canceled) return;
 
-      const imageUri = result.assets[0].uri;
-      const { processedUri, thumbnailUri } = await processImage(imageUri);
-      const encryptionKey = await generateEncryptionKey();
-      const encryptedPhotoUri = await encryptImage(processedUri, encryptionKey);
-      const encryptedThumbUri = thumbnailUri ? await encryptImage(thumbnailUri, encryptionKey) : null;
-
-      const { photoPath, thumbnailPath } = await uploadEncryptedImage(encryptedPhotoUri, encryptedThumbUri);
-      const { shareUrl } = await createShareLink(photoPath, thumbnailPath, encryptionKey);
+      // Process and upload using shared workflow
+      const shareUrl = await processAndUploadPhoto(result.assets[0].uri);
 
       setShareUrl(shareUrl);
       Alert.alert('Success!', 'Your photo has been encrypted and uploaded.');
     } catch (error: any) {
-      console.error('Error:', error);
-      Alert.alert('Error', `Failed to process photo: ${error?.message || 'Unknown error'}`);
+      handlePhotoError(error);
     } finally {
       setLoading(false);
     }
@@ -137,9 +124,17 @@ export default function App() {
         <ActivityIndicator size="large" color="#0000ff" />
       ) : (
         <View style={styles.buttonContainer}>
-          <Button title="Take Photo" onPress={handleTakePhoto} />
+          <Button
+            title={sessionReady ? "Take Photo" : "Initializing..."}
+            onPress={handleTakePhoto}
+            disabled={!sessionReady}
+          />
           <View style={{ height: 10 }} />
-          <Button title="Choose from Library" onPress={handlePickPhoto} />
+          <Button
+            title={sessionReady ? "Choose from Library" : "Initializing..."}
+            onPress={handlePickPhoto}
+            disabled={!sessionReady}
+          />
 
           {shareUrl && (
             <View style={styles.linkContainer}>
