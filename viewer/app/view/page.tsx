@@ -95,15 +95,7 @@ export async function generateMetadata({ searchParams }: {
     }
 }
 
-export default async function View({ searchParams }: {
-    searchParams: Promise<{ code?: string }>
-}) {
-    const params = await searchParams;
-
-    if (params?.code) {
-        redirect(`/p/${params.code}`);
-    }
-
+export default function View() {
     return (
         <Suspense fallback={<LoadingState />}>
             <ViewPage />
