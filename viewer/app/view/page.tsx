@@ -74,11 +74,11 @@ export async function generateMetadata({ searchParams }: {
                 images: thumbnailUrl ? [thumbnailUrl] : []
             }
         };
-    } catch (error) {
+    } catch (error: any) {
         console.error('[OG] Error generating metadata:', error);
         return {
-            title: 'Sharene',
-            description: 'Encrypted photo sharing'
+            title: 'Sharene Debug',
+            description: `Debug Error: ${error?.message || 'Unknown error'} | Code: ${code}`
         };
     }
 }
