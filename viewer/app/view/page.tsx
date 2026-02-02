@@ -1,5 +1,6 @@
 import { Suspense } from 'react';
 import { Metadata } from 'next';
+import { redirect } from 'next/navigation';
 import ViewPage from './ViewPage';
 import LoadingState from '@/components/LoadingState';
 
@@ -11,6 +12,9 @@ export async function generateMetadata({ searchParams }: {
     // Await params for Next.js 15 compatibility
     const params = await searchParams;
     const code = params.code;
+
+    // We can't redirect in generateMetadata, so we return basic metadata
+    // The default OG tags will be used until redirect happens (which is fast)
 
     if (!code) {
         return {
@@ -91,7 +95,15 @@ export async function generateMetadata({ searchParams }: {
     }
 }
 
-export default function View() {
+export default async function View({ searchParams }: {
+    searchParams: Promise<{ code?: string }>
+}) {
+    const params = await searchParams;
+
+    if (params?.code) {
+        redirect(`/p/${params.code}`);
+    }
+
     return (
         <Suspense fallback={<LoadingState />}>
             <ViewPage />
