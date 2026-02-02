@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 import { getSession } from './auth';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 
 export async function uploadEncryptedImage(
     encryptedPhoto: Uint8Array,
@@ -114,25 +114,23 @@ export async function createShareLink(
     encryptionKey: string,
     settings?: LinkSettings
 ): Promise<{ shortCode: string; shareUrl: string; linkId: string }> {
-    // Validate session exists and is valid
-    const session = await getSession();
-    if (!session) {
-        throw new Error('No active session');
-    }
+    // Always refresh session to ensure we have a valid token
+    console.log('Refreshing session before create-link...');
+    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
 
-    // Check if session is expired or about to expire (within 60 seconds)
-    const expiresAt = session.expires_at ? new Date(session.expires_at * 1000) : null;
-    const now = new Date();
-
-    if (expiresAt && expiresAt.getTime() - now.getTime() < 60000) {
-        console.log('Session expired or expiring soon, refreshing...');
-        const { data, error } = await supabase.auth.refreshSession();
-        if (error || !data.session) {
-            console.error('Session refresh failed:', error);
-            throw new Error('Session expired. Please restart the app.');
+    if (refreshError || !refreshData.session) {
+        console.error('Session refresh failed:', refreshError);
+        // Try getting existing session
+        const session = await getSession();
+        if (!session) {
+            throw new Error('No active session. Please restart the app.');
         }
+        console.log('Using existing session');
+    } else {
         console.log('Session refreshed successfully');
     }
+
+    console.log('Calling create-link with publicThumbnailUrl:', settings?.publicThumbnailUrl);
 
     const { data, error } = await supabase.functions.invoke('create-link', {
         body: {
@@ -148,8 +146,10 @@ export async function createShareLink(
 
     if (error) {
         console.error('Edge Function error:', error);
+        console.error('Error details:', JSON.stringify(error, null, 2));
         throw error;
     }
 
+    console.log('Create-link response:', data);
     return data as { shortCode: string; shareUrl: string; linkId: string };
 }

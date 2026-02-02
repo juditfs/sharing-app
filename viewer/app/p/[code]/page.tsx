@@ -1,6 +1,10 @@
-// Build timestamp: 2026-02-02T22:45:00Z - Force Vercel rebuild
+// Build timestamp: 2026-02-02T23:06:00Z - Force Vercel rebuild
 import { Metadata } from 'next';
 import ViewPage from '@/app/view/ViewPage';
+
+// Force dynamic rendering to ensure generateMetadata runs on every request
+// and bot detection works correctly for social media crawlers
+export const dynamic = 'force-dynamic';
 
 // params is a Promise in Next.js 15
 type Props = {
@@ -19,8 +23,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     }
 
     try {
-        // Fetch link metadata from Edge Function
-        const url = 'https://ndbqasanctkwagyinfag.supabase.co/functions/v1/get-link';
+        // Use environment variable for Supabase URL to support multi-environment deployments
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://ndbqasanctkwagyinfag.supabase.co';
+        const url = `${supabaseUrl}/functions/v1/get-link`;
 
         console.log('[OG] Fetching metadata for code (path param):', code);
 
@@ -46,8 +51,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
         }
 
         const data = await response.json();
-        const shareText = data.shareText || 'user shared a photo';
+        // Align with backend default: "shared a photo"
+        const shareText = data.shareText || 'shared a photo';
         const thumbnailUrl = data.publicThumbnailUrl;
+
+        // Log warning if thumbnail is missing (helps debug bucket/policy issues)
+        if (!thumbnailUrl) {
+            console.warn('[OG] No publicThumbnailUrl found for code:', code);
+        }
 
         // Return rich metadata
         return {

@@ -26,6 +26,8 @@ interface CreateLinkResponse {
 }
 
 serve(async (req) => {
+    console.log("DEPLOY_VERIFICATION: V2 - Using /p/ scheme")
+
     // Handle CORS preflight
     if (req.method === 'OPTIONS') {
         return new Response('ok', { headers: corsHeaders })
@@ -124,9 +126,10 @@ serve(async (req) => {
             )
         }
 
-        if (publicThumbnailUrl && !publicThumbnailUrl.startsWith(userPrefix)) {
+        if (publicThumbnailUrl && !publicThumbnailUrl.includes(`/${user.id}/`)) {
+            console.error('Invalid public thumbnail URL - user ID not found in path:', publicThumbnailUrl)
             return new Response(
-                JSON.stringify({ error: 'Invalid public thumbnail path: must belong to authenticated user' }),
+                JSON.stringify({ error: 'Invalid public thumbnail URL: must belong to authenticated user' }),
                 { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
         }
@@ -201,9 +204,9 @@ serve(async (req) => {
         }
 
         // Generate share URL (configurable via environment variable)
-        // Production URL on Vercel
-        const baseUrl = Deno.env.get('VIEWER_BASE_URL') || 'https://viewer-rho-seven.vercel.app'
-        const shareUrl = `${baseUrl}/view?code=${linkData.short_code}`
+        // Production URL on Vercel - using /p/ for better OG tag support
+        const baseUrl = (Deno.env.get('VIEWER_BASE_URL') || 'https://viewer-rho-seven.vercel.app').replace(/\/$/, '')
+        const shareUrl = `${baseUrl}/p/${linkData.short_code}`
 
         const response: CreateLinkResponse = {
             shortCode: linkData.short_code,
