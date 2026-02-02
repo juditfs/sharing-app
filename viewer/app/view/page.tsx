@@ -20,34 +20,45 @@ export async function generateMetadata({ searchParams }: {
 
     try {
         // Fetch link metadata from Edge Function
-        const response = await fetch(
-            `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/get-link`,
-            {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    shortCode: code,
-                    action: 'metadata'
-                }),
-                cache: 'no-store' // Don't cache for fresh data
-            }
-        );
+        const url = 'https://ndbqasanctkwagyinfag.supabase.co/functions/v1/get-link';
+
+        console.log('[OG] Fetching metadata for code:', code);
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                shortCode: code,
+                action: 'metadata'
+            }),
+            cache: 'no-store'
+        });
+
+        console.log('[OG] Response status:', response.status);
 
         if (!response.ok) {
+            console.error('[OG] Failed to fetch metadata:', response.status);
             throw new Error('Link not found');
         }
 
         const data = await response.json();
+        console.log('[OG] Metadata fetched:', {
+            hasShareText: !!data.shareText,
+            hasThumbnail: !!data.publicThumbnailUrl
+        });
+
+        const shareText = data.shareText || 'user shared a photo';
+        const thumbnailUrl = data.publicThumbnailUrl;
 
         return {
             title: 'Sharene',
-            description: data.shareText || 'user shared a photo',
+            description: shareText,
             openGraph: {
                 title: 'Sharene',
-                description: data.shareText || 'user shared a photo',
-                images: data.publicThumbnailUrl ? [
+                description: shareText,
+                images: thumbnailUrl ? [
                     {
-                        url: data.publicThumbnailUrl,
+                        url: thumbnailUrl,
                         width: 400,
                         height: 400,
                         alt: 'Photo preview'
@@ -58,12 +69,12 @@ export async function generateMetadata({ searchParams }: {
             twitter: {
                 card: 'summary_large_image',
                 title: 'Sharene',
-                description: data.shareText || 'user shared a photo',
-                images: data.publicThumbnailUrl ? [data.publicThumbnailUrl] : []
+                description: shareText,
+                images: thumbnailUrl ? [thumbnailUrl] : []
             }
         };
     } catch (error) {
-        console.error('Error generating metadata:', error);
+        console.error('[OG] Error generating metadata:', error);
         return {
             title: 'Sharene',
             description: 'Encrypted photo sharing'
