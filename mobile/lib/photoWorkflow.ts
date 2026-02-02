@@ -1,6 +1,6 @@
 import { processImage } from './imageProcessing';
 import { generateEncryptionKey, encryptImage } from './crypto';
-import { uploadEncryptedImage, createShareLink, LinkSettings } from './upload';
+import { uploadEncryptedImage, uploadPublicThumbnail, createShareLink, LinkSettings } from './upload';
 
 /**
  * Process, encrypt, and upload a photo, returning the shareable URL
@@ -10,7 +10,8 @@ import { uploadEncryptedImage, createShareLink, LinkSettings } from './upload';
  * 2. Generate encryption key
  * 3. Encrypt photo and thumbnail
  * 4. Upload to Supabase Storage
- * 5. Create shareable link via Edge Function
+ * 5. Upload public thumbnail for WhatsApp previews
+ * 6. Create shareable link via Edge Function
  * 
  * @param imageUri - URI of the image to process
  * @param settings - Optional link settings (expiry, download, share text, public thumbnail)
@@ -49,10 +50,28 @@ export async function processAndUploadPhoto(
     );
     console.log(`⏱️  [PERF] Upload to Supabase: ${Date.now() - t4}ms`);
 
+    // Upload public thumbnail for WhatsApp previews
+    let publicThumbnailUrl: string | undefined;
+    if (thumbnailUri) {
+        const t5 = Date.now();
+        try {
+            publicThumbnailUrl = await uploadPublicThumbnail(thumbnailUri);
+            console.log(`⏱️  [PERF] Upload public thumbnail: ${Date.now() - t5}ms`);
+        } catch (error) {
+            console.warn('Failed to upload public thumbnail:', error);
+            // Continue without public thumbnail
+        }
+    }
+
     // Create shareable link
-    const t5 = Date.now();
-    const { shareUrl, linkId } = await createShareLink(photoPath, thumbnailPath, encryptionKey, settings);
-    console.log(`⏱️  [PERF] Create share link (Edge Function): ${Date.now() - t5}ms`);
+    const t6 = Date.now();
+    const { shareUrl, linkId } = await createShareLink(
+        photoPath,
+        thumbnailPath,
+        encryptionKey,
+        { ...settings, publicThumbnailUrl }
+    );
+    console.log(`⏱️  [PERF] Create share link (Edge Function): ${Date.now() - t6}ms`);
 
     const totalTime = Date.now() - startTime;
     console.log(`✅ [PERF] Total workflow time: ${totalTime}ms (${(totalTime / 1000).toFixed(1)}s)`);

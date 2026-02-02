@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { getSession } from './auth';
+import * as FileSystem from 'expo-file-system';
 
 export async function uploadEncryptedImage(
     encryptedPhoto: Uint8Array,
@@ -47,6 +48,57 @@ export async function uploadEncryptedImage(
     }
 
     return { photoPath, thumbnailPath };
+}
+
+/**
+ * Upload unencrypted thumbnail to public bucket for WhatsApp/social previews
+ */
+export async function uploadPublicThumbnail(
+    thumbnailUri: string
+): Promise<string> {
+    const session = await getSession();
+    if (!session) {
+        throw new Error('No active session');
+    }
+
+    const timestamp = Date.now();
+    const userId = session.user.id;
+    const publicPath = `${userId}/${timestamp}_preview.jpg`;
+
+    // Read thumbnail file as base64
+    const base64 = await FileSystem.readAsStringAsync(thumbnailUri, {
+        encoding: 'base64',
+    });
+
+    // Convert base64 to Uint8Array
+    const binaryString = atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    console.log('Uploading public thumbnail to:', publicPath);
+
+    const { error } = await supabase.storage
+        .from('public-thumbnails')
+        .upload(publicPath, bytes, {
+            contentType: 'image/jpeg',
+            cacheControl: '31536000', // 1 year cache
+            upsert: false,
+        });
+
+    if (error) {
+        console.error('Public thumbnail upload error:', error);
+        throw new Error(`Public thumbnail upload failed: ${error.message}`);
+    }
+
+    // Get public URL
+    const { data } = supabase.storage
+        .from('public-thumbnails')
+        .getPublicUrl(publicPath);
+
+    console.log('Public thumbnail URL:', data.publicUrl);
+    return data.publicUrl;
 }
 
 export interface LinkSettings {
