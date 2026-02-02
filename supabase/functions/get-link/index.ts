@@ -147,11 +147,12 @@ serve(async (req) => {
                 thumbnailSignedUrl = thumbData?.signedUrl
             }
 
-            const response: MetadataResponse = {
+            const response = {
                 signedUrl: signedUrlData.signedUrl,
                 thumbnailUrl: thumbnailSignedUrl,
-                shareText: linkData.share_text || 'shared a photo',
+                shareText: linkData.share_text,
                 allowDownload: linkData.allow_download || false,
+                publicThumbnailUrl: linkData.public_thumbnail_url,
                 metadata: {
                     id: linkData.id,
                     createdAt: linkData.created_at,

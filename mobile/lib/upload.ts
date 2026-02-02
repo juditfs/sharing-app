@@ -61,7 +61,7 @@ export async function createShareLink(
     thumbnailPath: string | null,
     encryptionKey: string,
     settings?: LinkSettings
-): Promise<{ shortCode: string; shareUrl: string }> {
+): Promise<{ shortCode: string; shareUrl: string; linkId: string }> {
     // Validate session exists and is valid
     const session = await getSession();
     if (!session) {
@@ -99,5 +99,5 @@ export async function createShareLink(
         throw error;
     }
 
-    return data as { shortCode: string; shareUrl: string };
+    return data as { shortCode: string; shareUrl: string; linkId: string };
 }

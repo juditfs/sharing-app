@@ -19,7 +19,7 @@ import { uploadEncryptedImage, createShareLink, LinkSettings } from './upload';
 export async function processAndUploadPhoto(
     imageUri: string,
     settings?: LinkSettings
-): Promise<string> {
+): Promise<{ shareUrl: string; linkId: string; thumbnailUri: string }> {
     const startTime = Date.now();
     console.log('📸 [PERF] Starting photo workflow');
 
@@ -51,11 +51,11 @@ export async function processAndUploadPhoto(
 
     // Create shareable link
     const t5 = Date.now();
-    const { shareUrl } = await createShareLink(photoPath, thumbnailPath, encryptionKey, settings);
+    const { shareUrl, linkId } = await createShareLink(photoPath, thumbnailPath, encryptionKey, settings);
     console.log(`⏱️  [PERF] Create share link (Edge Function): ${Date.now() - t5}ms`);
 
     const totalTime = Date.now() - startTime;
     console.log(`✅ [PERF] Total workflow time: ${totalTime}ms (${(totalTime / 1000).toFixed(1)}s)`);
 
-    return shareUrl;
+    return { shareUrl, linkId, thumbnailUri };
 }

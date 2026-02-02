@@ -14,6 +14,7 @@ export interface LinkData extends LinkMetadata {
     encryptionKey: string;
     signedPhotoUrl: string;
     signedThumbnailUrl: string | null;
+    publicThumbnailUrl: string | null;
 }
 
 /**

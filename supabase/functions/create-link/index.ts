@@ -22,6 +22,7 @@ interface CreateLinkRequest {
 interface CreateLinkResponse {
     shortCode: string
     shareUrl: string
+    linkId: string
 }
 
 serve(async (req) => {
@@ -207,6 +208,7 @@ serve(async (req) => {
         const response: CreateLinkResponse = {
             shortCode: linkData.short_code,
             shareUrl,
+            linkId: linkData.id,
         }
 
         return new Response(
@@ -231,7 +233,7 @@ serve(async (req) => {
 function validateExpiry(expiry?: string): { valid: boolean; error?: string } {
     if (!expiry) return { valid: true }
 
-    const validPresets = ['1h', '1d', '1w', '1m', '1y']
+    const validPresets = ['10m', '1h', '1d', '1w', '1m', '1y']
     if (validPresets.includes(expiry)) return { valid: true }
 
     // Try parsing as ISO date
@@ -268,6 +270,7 @@ function calculateExpiry(expiry?: string): Date | null {
 
     const now = new Date()
     const expiryMap: Record<string, number> = {
+        '10m': 10 * 60 * 1000,
         '1h': 1 * 60 * 60 * 1000,
         '1d': 24 * 60 * 60 * 1000,
         '1w': 7 * 24 * 60 * 60 * 1000,

@@ -66,11 +66,21 @@ export default function App() {
         return;
       }
 
-      // Process and upload using shared workflow
-      const shareUrl = await processAndUploadPhoto(result.assets[0].uri);
+      // Process and upload using shared workflow with smart defaults
+      const uploadResult = await processAndUploadPhoto(
+        result.assets[0].uri,
+        {
+          expiry: '10m',
+          shareText: 'user shared a photo',
+          allowDownload: false
+        }
+      );
 
-      setShareUrl(shareUrl);
-      Alert.alert('Success!', 'Your photo has been encrypted and uploaded.');
+      // Auto-copy to clipboard
+      await Clipboard.setStringAsync(uploadResult.shareUrl);
+
+      setShareUrl(uploadResult.shareUrl);
+      Alert.alert('Success!', 'Link copied to clipboard!');
     } catch (error: any) {
       handlePhotoError(error);
     } finally {
@@ -96,11 +106,21 @@ export default function App() {
 
       if (result.canceled) return;
 
-      // Process and upload using shared workflow
-      const shareUrl = await processAndUploadPhoto(result.assets[0].uri);
+      // Process and upload using shared workflow with smart defaults
+      const uploadResult = await processAndUploadPhoto(
+        result.assets[0].uri,
+        {
+          expiry: '10m',
+          shareText: 'user shared a photo',
+          allowDownload: false
+        }
+      );
 
-      setShareUrl(shareUrl);
-      Alert.alert('Success!', 'Your photo has been encrypted and uploaded.');
+      // Auto-copy to clipboard
+      await Clipboard.setStringAsync(uploadResult.shareUrl);
+
+      setShareUrl(uploadResult.shareUrl);
+      Alert.alert('Success!', 'Link copied to clipboard!');
     } catch (error: any) {
       handlePhotoError(error);
     } finally {
