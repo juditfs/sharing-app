@@ -96,6 +96,16 @@ serve(async (req) => {
             )
         }
 
+        // Validate expiry format
+        const expiryValidation = validateExpiry(expiry)
+        if (!expiryValidation.valid) {
+            console.error('Invalid expiry:', expiry, expiryValidation.error)
+            return new Response(
+                JSON.stringify({ error: expiryValidation.error }),
+                { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
+
 
         // Validate storage paths belong to authenticated user (prevent path traversal)
         const userPrefix = `${user.id}/`
@@ -120,34 +130,51 @@ serve(async (req) => {
             )
         }
 
-        // TODO (MVP): Add collision handling for production scale
-        // Current risk: ~0.0002% at 10k links, acceptable for prototype
-        // Generate short code (8 characters, URL-safe)
-        const shortCode = generateShortCode()
-
         // Calculate expiry timestamp
         // TEMP: Default to 10 minutes for verification (user request)
         // const expiresAt = calculateExpiry(expiry || '1w')
         const expiresAt = expiry ? calculateExpiry(expiry) : new Date(Date.now() + 10 * 60 * 1000)
 
-        // Insert link into shared_links table
-        const { data: linkData, error: linkError } = await supabaseAdmin
-            .from('shared_links')
-            .insert({
-                user_id: user.id,
-                short_code: shortCode,
-                photo_url: photoUrl,
-                thumbnail_url: thumbnailUrl || null,
-                expires_at: expiresAt?.toISOString() || null,
-                allow_download: allowDownload ?? false,
-                share_text: shareText || 'shared a photo',
-                public_thumbnail_url: publicThumbnailUrl || null,
-            })
-            .select()
-            .single()
+        // Insert link with collision retry
+        const MAX_RETRIES = 3
+        let linkData = null
+        let lastError = null
 
-        if (linkError) {
-            console.error('Error creating link:', linkError)
+        for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+            const shortCode = generateShortCode()
+
+            const { data, error } = await supabaseAdmin
+                .from('shared_links')
+                .insert({
+                    user_id: user.id,
+                    short_code: shortCode,
+                    photo_url: photoUrl,
+                    thumbnail_url: thumbnailUrl || null,
+                    expires_at: expiresAt?.toISOString() || null,
+                    allow_download: allowDownload ?? false,
+                    share_text: shareText || 'shared a photo',
+                    public_thumbnail_url: publicThumbnailUrl || null,
+                })
+                .select()
+                .single()
+
+            if (!error) {
+                linkData = data
+                break
+            }
+
+            // Check if it's a uniqueness violation (PostgreSQL error code 23505)
+            if (error.code === '23505' && attempt < MAX_RETRIES - 1) {
+                console.log(`Short code collision on attempt ${attempt + 1}, retrying...`)
+                continue
+            }
+
+            lastError = error
+            break
+        }
+
+        if (!linkData) {
+            console.error('Failed to create link after retries:', lastError)
             return new Response(
                 JSON.stringify({ error: 'Failed to create link' }),
                 { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -175,10 +202,10 @@ serve(async (req) => {
         // Generate share URL (configurable via environment variable)
         // Production URL on Vercel
         const baseUrl = Deno.env.get('VIEWER_BASE_URL') || 'https://viewer-rho-seven.vercel.app'
-        const shareUrl = `${baseUrl}/view?code=${shortCode}`
+        const shareUrl = `${baseUrl}/view?code=${linkData.short_code}`
 
         const response: CreateLinkResponse = {
-            shortCode,
+            shortCode: linkData.short_code,
             shareUrl,
         }
 
@@ -195,6 +222,41 @@ serve(async (req) => {
         )
     }
 })
+
+/**
+ * Validate expiry input before processing
+ * @param expiry - Expiry option to validate
+ * @returns Validation result with error message if invalid
+ */
+function validateExpiry(expiry?: string): { valid: boolean; error?: string } {
+    if (!expiry) return { valid: true }
+
+    const validPresets = ['1h', '1d', '1w', '1m', '1y']
+    if (validPresets.includes(expiry)) return { valid: true }
+
+    // Try parsing as ISO date
+    try {
+        const date = new Date(expiry)
+        if (isNaN(date.getTime())) {
+            return {
+                valid: false,
+                error: 'Invalid expiry format. Use: 1h, 1d, 1w, 1m, 1y, or ISO date string'
+            }
+        }
+        if (date <= new Date()) {
+            return {
+                valid: false,
+                error: 'Expiry date must be in the future'
+            }
+        }
+        return { valid: true }
+    } catch {
+        return {
+            valid: false,
+            error: 'Invalid expiry format. Use: 1h, 1d, 1w, 1m, 1y, or ISO date string'
+        }
+    }
+}
 
 /**
  * Calculate expiry timestamp from expiry option

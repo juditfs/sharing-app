@@ -48,9 +48,12 @@ serve(async (req) => {
         let deletedCount = 0
         const errors: string[] = []
 
-        // Delete files from storage and mark as deleted
+        // Process each link: delete storage files, then mark as deleted
         for (const link of linksToDelete || []) {
             try {
+                let allStorageDeleted = true
+                const storageErrors: string[] = []
+
                 // Delete encrypted photo
                 const { error: photoError } = await supabaseAdmin
                     .storage
@@ -59,7 +62,8 @@ serve(async (req) => {
 
                 if (photoError) {
                     console.error(`Error deleting photo ${link.photo_url}:`, photoError)
-                    errors.push(`Photo ${link.id}: ${photoError.message}`)
+                    storageErrors.push(`Photo: ${photoError.message}`)
+                    allStorageDeleted = false
                 }
 
                 // Delete encrypted thumbnail
@@ -71,7 +75,8 @@ serve(async (req) => {
 
                     if (thumbError) {
                         console.error(`Error deleting thumbnail ${link.thumbnail_url}:`, thumbError)
-                        errors.push(`Thumbnail ${link.id}: ${thumbError.message}`)
+                        storageErrors.push(`Thumbnail: ${thumbError.message}`)
+                        allStorageDeleted = false
                     }
                 }
 
@@ -84,21 +89,27 @@ serve(async (req) => {
 
                     if (publicThumbError) {
                         console.error(`Error deleting public thumbnail ${link.public_thumbnail_url}:`, publicThumbError)
-                        errors.push(`Public thumbnail ${link.id}: ${publicThumbError.message}`)
+                        storageErrors.push(`Public thumbnail: ${publicThumbError.message}`)
+                        allStorageDeleted = false
                     }
                 }
 
-                // Soft delete in database
-                const { error: updateError } = await supabaseAdmin
-                    .from('shared_links')
-                    .update({ deleted_at: new Date().toISOString() })
-                    .eq('id', link.id)
+                // Only mark as deleted if ALL storage operations succeeded
+                if (allStorageDeleted) {
+                    const { error: updateError } = await supabaseAdmin
+                        .from('shared_links')
+                        .update({ deleted_at: new Date().toISOString() })
+                        .eq('id', link.id)
 
-                if (updateError) {
-                    console.error(`Error marking link ${link.id} as deleted:`, updateError)
-                    errors.push(`Database ${link.id}: ${updateError.message}`)
+                    if (updateError) {
+                        console.error(`Error marking link ${link.id} as deleted:`, updateError)
+                        errors.push(`Link ${link.id}: Database update failed: ${updateError.message}`)
+                    } else {
+                        deletedCount++
+                    }
                 } else {
-                    deletedCount++
+                    // Storage deletion failed - don't mark as deleted so it can be retried
+                    errors.push(`Link ${link.id}: Storage deletion failed (${storageErrors.join(', ')}). Will retry on next run.`)
                 }
 
             } catch (error) {

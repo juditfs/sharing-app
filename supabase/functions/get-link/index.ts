@@ -102,6 +102,15 @@ serve(async (req) => {
             )
         }
 
+        // Check if link has been deleted (cleaned up)
+        if (linkData.deleted_at) {
+            return new Response(
+                JSON.stringify({ error: 'This link has been deleted' }),
+                { status: 410, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
+
+
         // Handle different actions
         if (action === 'metadata') {
             // Increment view count ONLY on metadata action (first call)
