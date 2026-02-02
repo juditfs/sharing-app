@@ -8,9 +8,9 @@ import PhotoViewer from '@/components/PhotoViewer';
 import LoadingState from '@/components/LoadingState';
 import ErrorScreen from '@/components/ErrorScreen';
 
-export default function ViewPage() {
+export default function ViewPage({ code: propCode }: { code?: string }) {
     const searchParams = useSearchParams();
-    const shortCode = searchParams.get('code');
+    const shortCode = propCode || searchParams.get('code');
 
     const [photoUrl, setPhotoUrl] = useState<string | null>(null);
     const [metadata, setMetadata] = useState<LinkData | null>(null);
