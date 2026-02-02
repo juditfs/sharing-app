@@ -7,9 +7,10 @@ import LoadingState from '@/components/LoadingState';
 export const dynamic = 'force-dynamic';
 
 export async function generateMetadata({ searchParams }: {
-    searchParams: { code?: string }
+    searchParams: Promise<{ code?: string }>
 }): Promise<Metadata> {
-    const code = searchParams.code;
+    const params = await searchParams;
+    const code = params.code;
 
     if (!code) {
         return {
