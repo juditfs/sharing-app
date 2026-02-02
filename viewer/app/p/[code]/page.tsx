@@ -1,3 +1,4 @@
+// Build timestamp: 2026-02-02T22:45:00Z - Force Vercel rebuild
 import { Metadata } from 'next';
 import ViewPage from '@/app/view/ViewPage';
 
