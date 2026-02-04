@@ -104,6 +104,7 @@ export default function ViewPage({ code: propCode }: { code?: string }) {
         <PhotoViewer
             photoUrl={photoUrl!}
             shareText={metadata!.shareText}
+            allowDownload={metadata!.allowDownload}
         />
     );
 }
