@@ -118,13 +118,15 @@ export function SettingsDrawer({ visible, onClose, onSave, initialSettings }: Se
                         </View>
                     </View>
 
+                    {/* 
                     <View style={styles.row}>
                         <Text style={styles.label}>Allow Download</Text>
                         <Switch
                             value={settings.allowDownload || false}
                             onValueChange={toggleDownload}
                         />
-                    </View>
+                    </View> 
+                    */}
 
                     <View style={styles.divider} />
 

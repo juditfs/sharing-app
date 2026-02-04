@@ -161,7 +161,7 @@ export async function createShareLink(
             thumbnailUrl: thumbnailPath,
             encryptionKey,
             expiry: settings?.expiry,
-            allowDownload: settings?.allowDownload,
+            allowDownload: settings?.allowDownload ?? false,
             shareText: settings?.shareText,
             publicThumbnailUrl: settings?.publicThumbnailUrl,
         },
