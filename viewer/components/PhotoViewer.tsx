@@ -7,11 +7,7 @@ interface PhotoViewerProps {
 }
 
 export default function PhotoViewer({ photoUrl, shareText, allowDownload }: PhotoViewerProps) {
-    // Debug logging
-    console.log('🔒 PhotoViewer allowDownload:', allowDownload);
-
     const handleBlockInteraction = (e: React.MouseEvent | React.TouchEvent | React.DragEvent) => {
-        console.log('🚫 Interaction blocked!', e.type);
         if (!allowDownload) {
             e.preventDefault();
             e.stopPropagation();
