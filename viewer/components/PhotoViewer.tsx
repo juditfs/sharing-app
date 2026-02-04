@@ -31,7 +31,6 @@ export default function PhotoViewer({ photoUrl, shareText, allowDownload }: Phot
                             WebkitTouchCallout: 'none',
                         }}
                         onContextMenu={handleContextMenu}
-                        style={{ WebkitTouchCallout: 'none' }}
                     />
                 )}
             </div>
