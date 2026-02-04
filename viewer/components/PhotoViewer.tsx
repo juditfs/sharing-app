@@ -17,23 +17,19 @@ export default function PhotoViewer({ photoUrl, shareText, allowDownload }: Phot
         <div className="fixed inset-0 flex flex-col bg-gray-900">
             {/* Photo Container - takes up remaining space */}
             <div className="flex-1 relative overflow-hidden flex items-center justify-center">
-                <img
-                    src={photoUrl}
-                    alt={shareText}
-                    className={`max-w-full max-h-full object-contain ${!allowDownload ? 'pointer-events-none select-none' : ''
-                        }`}
-                    onContextMenu={handleContextMenu}
-                    style={!allowDownload ? { WebkitTouchCallout: 'none' } : {}}
-                />
-                {!allowDownload && (
-                    // Transparent overlay to capture long-press on mobile while allowing pinch-zoom (mostly)
-                    // Actually, pointer-events-none on img usually prevents context menu on mobile,
-                    // but we might need this overlay to catch the event if pointer-events passes it through.
-                    // A simple overlay that blocks all interaction might be annoying for zoom.
-                    // Let's rely on pointer-events-none + onContextMenu + WebkitTouchCallout.
-                    // Duplicate handler on parent wrapper just in case.
+                {allowDownload ? (
+                    <img
+                        src={photoUrl}
+                        alt={shareText}
+                        className="max-w-full max-h-full object-contain"
+                    />
+                ) : (
                     <div
-                        className="absolute inset-0"
+                        className="w-full h-full bg-contain bg-center bg-no-repeat"
+                        style={{
+                            backgroundImage: `url(${photoUrl})`,
+                            WebkitTouchCallout: 'none',
+                        }}
                         onContextMenu={handleContextMenu}
                         style={{ WebkitTouchCallout: 'none' }}
                     />
