@@ -1,8 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Using standard Next.js deployment on Vercel
-  // Static export removed due to compatibility issues with client-side routing
+  // Disable streaming metadata for all bots
+  // This ensures OG tags are in initial HTML for WhatsApp, Telegram, etc.
+  htmlLimitedBots: /.*/,
 };
 
 export default nextConfig;

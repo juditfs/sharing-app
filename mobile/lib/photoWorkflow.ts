@@ -26,8 +26,8 @@ export async function processAndUploadPhoto(
 
     // Process image (resize, strip EXIF)
     const t1 = Date.now();
-    const { processedUri, thumbnailUri } = await processImage(imageUri);
-    console.log(`⏱️  [PERF] Image processing (EXIF + resize + thumbnail): ${Date.now() - t1}ms`);
+    const { processedUri, thumbnailUri, ogPreviewUri } = await processImage(imageUri);
+    console.log(`⏱️  [PERF] Image processing (EXIF + resize + thumbnail + OG): ${Date.now() - t1}ms`);
 
     // Generate encryption key
     const t2 = Date.now();
@@ -50,15 +50,15 @@ export async function processAndUploadPhoto(
     );
     console.log(`⏱️  [PERF] Upload to Supabase: ${Date.now() - t4}ms`);
 
-    // Upload public thumbnail for WhatsApp previews
+    // Upload OG preview (1200x630) for WhatsApp/social previews
     let publicThumbnailUrl: string | undefined;
-    if (thumbnailUri) {
+    if (ogPreviewUri) {
         const t5 = Date.now();
         try {
-            publicThumbnailUrl = await uploadPublicThumbnail(thumbnailUri);
-            console.log(`⏱️  [PERF] Upload public thumbnail: ${Date.now() - t5}ms`);
+            publicThumbnailUrl = await uploadPublicThumbnail(ogPreviewUri);
+            console.log(`⏱️  [PERF] Upload OG preview (1200x630): ${Date.now() - t5}ms`);
         } catch (error) {
-            console.warn('Failed to upload public thumbnail:', error);
+            console.warn('Failed to upload OG preview:', error);
             // Continue without public thumbnail
         }
     }

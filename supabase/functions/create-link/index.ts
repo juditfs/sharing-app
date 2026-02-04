@@ -203,8 +203,7 @@ serve(async (req) => {
             )
         }
 
-        // Generate share URL (configurable via environment variable)
-        // Production URL on Vercel - using /p/ for better OG tag support
+        // Generate share URL
         const baseUrl = (Deno.env.get('VIEWER_BASE_URL') || 'https://viewer-rho-seven.vercel.app').replace(/\/$/, '')
         const shareUrl = `${baseUrl}/p/${linkData.short_code}`
 

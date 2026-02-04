@@ -3,7 +3,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 export async function processImage(imageUri: string) {
     // Process main image and thumbnail in parallel
     const [processed, thumbnail] = await Promise.all([
-        // Resize and strip EXIF data
+        // Resize and strip EXIF data for full image
         ImageManipulator.manipulateAsync(
             imageUri,
             [
@@ -15,14 +15,15 @@ export async function processImage(imageUri: string) {
                 base64: false,
             }
         ),
-        // Generate thumbnail
+        // Generate thumbnail - used for both in-app display and OG preview
+        // Using 600px width for better quality on social media
         ImageManipulator.manipulateAsync(
             imageUri,
             [
-                { resize: { width: 400 } },
+                { resize: { width: 600 } },
             ],
             {
-                compress: 0.7,
+                compress: 0.8,
                 format: ImageManipulator.SaveFormat.JPEG,
                 base64: false,
             }
@@ -32,5 +33,7 @@ export async function processImage(imageUri: string) {
     return {
         processedUri: processed.uri,
         thumbnailUri: thumbnail.uri,
+        // Use the same thumbnail for OG preview (aspect ratio doesn't need to be exact)
+        ogPreviewUri: thumbnail.uri,
     };
 }

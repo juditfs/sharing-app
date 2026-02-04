@@ -2,5 +2,11 @@
     "$schema": "https://openapi.vercel.sh/vercel.json",
     "framework": "nextjs",
     "buildCommand": "npm run build",
-    "outputDirectory": ".next"
+    "outputDirectory": ".next",
+    "rewrites": [
+        {
+            "source": "/s/:code",
+            "destination": "https://ndbqasanctkwagyinfag.supabase.co/storage/v1/object/public/og-pages/:code.html"
+        }
+    ]
 }

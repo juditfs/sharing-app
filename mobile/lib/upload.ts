@@ -70,7 +70,7 @@ export async function uploadPublicThumbnail(
         encoding: 'base64',
     });
 
-    // Convert base64 to Uint8Array
+    // Convert base64 to Uint8Array (more reliable than blob in RN)
     const binaryString = atob(base64);
     const bytes = new Uint8Array(binaryString.length);
     for (let i = 0; i < binaryString.length; i++) {
@@ -78,6 +78,7 @@ export async function uploadPublicThumbnail(
     }
 
     console.log('Uploading public thumbnail to:', publicPath);
+    console.log('Thumbnail size:', bytes.length, 'bytes');
 
     const { error } = await supabase.storage
         .from('public-thumbnails')
