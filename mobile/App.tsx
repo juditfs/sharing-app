@@ -10,7 +10,7 @@ import { signInAnonymously } from './lib/auth';
 import { handlePhotoError } from './lib/errorHandling';
 import { processAndUploadPhoto } from './lib/photoWorkflow';
 import { SettingsDrawer } from './components/SettingsDrawer';
-import { LinkSettings } from './lib/api';
+import { LinkSettings, updateLink } from './lib/api';
 import { theme } from './theme';
 
 export default function App() {
@@ -26,6 +26,7 @@ export default function App() {
     shareUrl: string;
     thumbnailUri: string;
     settings: LinkSettings;
+    availableThumbnailUrl?: string | null; // Persist the URL even if OFF
   } | null>(null);
 
   const [settingsVisible, setSettingsVisible] = useState(false);
@@ -87,7 +88,8 @@ export default function App() {
           ...defaultSettings,
           // Use returned publicThumbnailUrl or null details
           publicThumbnailUrl: uploadResult.publicThumbnailUrl
-        }
+        },
+        availableThumbnailUrl: uploadResult.publicThumbnailUrl // Persist this!
       });
 
       // Show Toast instead of Alert
@@ -216,9 +218,34 @@ export default function App() {
                 visible={settingsVisible}
                 onClose={() => setSettingsVisible(false)}
                 initialSettings={currentLink.settings}
+                availableThumbnailUrl={currentLink.availableThumbnailUrl} // Pass it here
                 onSave={async (newSettings: LinkSettings) => {
-                  // Optimistic update
-                  setCurrentLink(prev => prev ? ({ ...prev, settings: newSettings }) : null);
+                  try {
+                    // Update backend
+                    await updateLink(currentLink.shortCode, newSettings);
+
+                    // Update local state with cache-busted URL
+                    // Use random 3 chars to prevent collision and ensure update
+                    const randomTag = Math.random().toString(36).substring(2, 5);
+                    const baseUrl = currentLink.shareUrl.split('?')[0];
+                    const newShareUrl = `${baseUrl}?v=${randomTag}`;
+
+                    // Auto-copy new link and show toast
+                    await Clipboard.setStringAsync(newShareUrl);
+                    setToastVisible(true);
+
+                    setCurrentLink(prev => {
+                      if (!prev) return null;
+                      return {
+                        ...prev,
+                        settings: newSettings,
+                        shareUrl: newShareUrl
+                      };
+                    });
+                  } catch (e) {
+                    console.error('Failed to save settings:', e);
+                    Alert.alert('Error', 'Failed to save settings. Please try again.');
+                  }
                 }}
               />
             </View>

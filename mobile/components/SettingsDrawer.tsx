@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { StyleSheet, View, Text, Modal, TouchableOpacity, Switch, ActivityIndicator, Alert } from 'react-native';
+import React, { useState, useRef, useEffect } from 'react';
+import { StyleSheet, View, Text, Modal, TouchableOpacity, Switch, ActivityIndicator, Alert, TouchableWithoutFeedback, Animated, Dimensions } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { LinkSettings } from '../lib/upload';
 
 interface SettingsDrawerProps {
@@ -7,24 +8,45 @@ interface SettingsDrawerProps {
     onClose: () => void;
     onSave: (newSettings: LinkSettings) => Promise<void>;
     initialSettings: LinkSettings;
+    availableThumbnailUrl?: string | null;
 }
 
-export function SettingsDrawer({ visible, onClose, onSave, initialSettings }: SettingsDrawerProps) {
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+export function SettingsDrawer({ visible, onClose, onSave, initialSettings, availableThumbnailUrl }: SettingsDrawerProps) {
     const [settings, setSettings] = useState<LinkSettings>(initialSettings);
     const [saving, setSaving] = useState(false);
+    const translateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
 
-    // Reset state when opening
-    React.useEffect(() => {
+    // Reset state and animate when opening
+    useEffect(() => {
         if (visible) {
             setSettings(initialSettings);
+            // Slide up animation
+            translateY.setValue(SCREEN_HEIGHT);
+            Animated.spring(translateY, {
+                toValue: 0,
+                friction: 8, // Adjust for bounciness
+                tension: 40, // Adjust for speed
+                useNativeDriver: true,
+            }).start();
         }
     }, [visible, initialSettings]);
+
+    const handleClose = () => {
+        // Slide down animation before closing
+        Animated.timing(translateY, {
+            toValue: SCREEN_HEIGHT,
+            duration: 250,
+            useNativeDriver: true,
+        }).start(() => onClose());
+    };
 
     const handleSave = async () => {
         try {
             setSaving(true);
             await onSave(settings);
-            onClose();
+            handleClose(); // Use animated close
         } catch (error) {
             Alert.alert('Error', 'Failed to update settings');
         } finally {
@@ -36,45 +58,16 @@ export function SettingsDrawer({ visible, onClose, onSave, initialSettings }: Se
         setSettings(prev => ({ ...prev, expiry }));
     };
 
-    const toggleDownload = (value: boolean) => {
-        setSettings(prev => ({ ...prev, allowDownload: value }));
-    };
-
     const toggleThumbnail = (value: boolean) => {
-        // If turning ON, we use a placeholder "true" string or the actual URL if we have it.
-        // But wait, the backend expects a URL string.
-        // If we turn it OFF, we send null.
-        // If we turn it ON, we need the original URL.
-        // The current UI flow assumes we can just toggle it. 
-        // Issue: If we turn it OFF, the backend deletes the file. We can't turn it back ON easily unless we re-upload or if the backend soft-deletes.
-        // The implementation plan said: "Turning this ON shares a preview... Turning OFF will require deleting".
-        // If user toggles OFF then ON without saving, it's fine.
-        // If user saves OFF, then tries to turn ON later, we might have lost the file.
-        // For MVP: If saved as OFF, the file is gone. We should disable the toggle or warn.
-        // Actually, let's just handle the state here. The parent component typically passes the current known publicThumbnailUrl.
-        // If we toggle OFF, we set it to null (or undefined? code says null).
-        // If we toggle ON, we need to recover the previous URL.
-
         if (value) {
-            // Attempting to turn ON
-            // We ideally restore the initial value if it existed
-            if (initialSettings.publicThumbnailUrl) {
+            if (availableThumbnailUrl) {
+                setSettings(prev => ({ ...prev, publicThumbnailUrl: availableThumbnailUrl }));
+            } else if (initialSettings.publicThumbnailUrl) {
                 setSettings(prev => ({ ...prev, publicThumbnailUrl: initialSettings.publicThumbnailUrl }));
             } else {
-                // We can't enable it if it didn't exist or was deleted
                 Alert.alert('Cannot Enable', 'No public thumbnail is available for this link.');
             }
         } else {
-            // Turning OFF
-            setSettings(prev => ({ ...prev, publicThumbnailUrl: undefined })); // undefined or null needed. Let's use undefined to signal removal/absence in our types, but backend expects null/omission logic.
-            // Wait, update-link expects explicit null to delete.
-            // My api.ts maps Partial<LinkSettings>.
-            // Let's modify LinkSettings logic or just pass null via a cast if needed. 
-            // Actually LinkSettings defines it as `string | undefined`.
-            // I'll assume passing null to backend is handled by JSON.stringify converting null to null.
-            // So I should set it to null in state.
-            // However TS might complain if interface says string | undefined.
-            // Let's coerce it.
             setSettings(prev => ({ ...prev, publicThumbnailUrl: null as any }));
         }
     };
@@ -83,84 +76,87 @@ export function SettingsDrawer({ visible, onClose, onSave, initialSettings }: Se
 
     return (
         <Modal
-            animationType="slide"
+            animationType="fade"
             transparent={true}
             visible={visible}
-            onRequestClose={onClose}
+            onRequestClose={handleClose}
         >
-            <View style={styles.overlay}>
-                <View style={styles.drawer}>
-                    <View style={styles.header}>
-                        <Text style={styles.title}>Link Settings</Text>
-                        <TouchableOpacity onPress={onClose} disabled={saving}>
-                            <Text style={styles.closeButton}>Close</Text>
-                        </TouchableOpacity>
-                    </View>
-
-                    <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>Expiration</Text>
-                        <View style={styles.segmentContainer}>
-                            {['10m', '1h', '1d', '1w'].map((opt) => (
-                                <TouchableOpacity
-                                    key={opt}
-                                    style={[
-                                        styles.segmentButton,
-                                        settings.expiry === opt && styles.segmentButtonActive
-                                    ]}
-                                    onPress={() => updateExpiry(opt)}
-                                >
-                                    <Text style={[
-                                        styles.segmentText,
-                                        settings.expiry === opt && styles.segmentTextActive
-                                    ]}>{opt}</Text>
-                                </TouchableOpacity>
-                            ))}
+            <TouchableOpacity
+                style={styles.overlay}
+                activeOpacity={1}
+                onPress={handleClose}
+            >
+                <TouchableWithoutFeedback>
+                    <Animated.View style={[
+                        styles.drawer,
+                        { transform: [{ translateY }] }
+                    ]}>
+                        <View style={styles.header}>
+                            <Text style={styles.title}>Settings</Text>
+                            <TouchableOpacity
+                                onPress={handleClose}
+                                disabled={saving}
+                                style={styles.closeButtonContainer}
+                            >
+                                <Ionicons name="close" size={20} color="#5E5E5E" />
+                            </TouchableOpacity>
                         </View>
-                    </View>
 
-                    {/* 
-                    <View style={styles.row}>
-                        <Text style={styles.label}>Allow Download</Text>
-                        <Switch
-                            value={settings.allowDownload || false}
-                            onValueChange={toggleDownload}
-                        />
-                    </View> 
-                    */}
-
-                    <View style={styles.divider} />
-
-                    <View style={styles.row}>
-                        <View style={{ flex: 1 }}>
-                            <Text style={styles.label}>Public Preview on WhatsApp</Text>
-                            <Text style={styles.disclaimer}>
-                                {hasThumbnail
-                                    ? "Thumbnail is visible to messaging apps."
-                                    : "No preview will be shown."}
-                            </Text>
+                        <View style={styles.section}>
+                            <Text style={styles.sectionTitle}>Expiration</Text>
+                            <View style={styles.segmentContainer}>
+                                {['10m', '1h', '1d', '1w'].map((opt) => (
+                                    <TouchableOpacity
+                                        key={opt}
+                                        style={[
+                                            styles.segmentButton,
+                                            settings.expiry === opt && styles.segmentButtonActive
+                                        ]}
+                                        onPress={() => updateExpiry(opt)}
+                                    >
+                                        <Text style={[
+                                            styles.segmentText,
+                                            settings.expiry === opt && styles.segmentTextActive
+                                        ]}>{opt}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
                         </View>
-                        <Switch
-                            value={hasThumbnail}
-                            onValueChange={toggleThumbnail}
-                            disabled={!initialSettings.publicThumbnailUrl && !hasThumbnail} // Cannot enable if never existed
-                        />
-                    </View>
 
-                    <View style={styles.footer}>
-                        <TouchableOpacity
-                            style={[styles.saveButton, saving && styles.disabledButton]}
-                            onPress={handleSave}
-                            disabled={saving}
-                        >
-                            {saving ? (
-                                <ActivityIndicator color="#fff" />
-                            ) : (
-                                <Text style={styles.saveButtonText}>Save Changes</Text>
-                            )}
-                        </TouchableOpacity>
-                    </View>
-                </View>
-            </View>
+                        <View style={styles.divider} />
+
+                        <View style={styles.row}>
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.label}>Public Preview on WhatsApp</Text>
+                                <Text style={styles.disclaimer}>
+                                    {hasThumbnail
+                                        ? "Thumbnail is visible to messaging apps."
+                                        : "No preview will be shown."}
+                                </Text>
+                            </View>
+                            <Switch
+                                value={hasThumbnail}
+                                onValueChange={toggleThumbnail}
+                                disabled={!availableThumbnailUrl && !initialSettings.publicThumbnailUrl && !hasThumbnail}
+                            />
+                        </View>
+
+                        <View style={styles.footer}>
+                            <TouchableOpacity
+                                style={[styles.saveButton, saving && styles.disabledButton]}
+                                onPress={handleSave}
+                                disabled={saving}
+                            >
+                                {saving ? (
+                                    <ActivityIndicator color="#fff" />
+                                ) : (
+                                    <Text style={styles.saveButtonText}>Save Changes</Text>
+                                )}
+                            </TouchableOpacity>
+                        </View>
+                    </Animated.View>
+                </TouchableWithoutFeedback>
+            </TouchableOpacity>
         </Modal>
     );
 }
@@ -168,104 +164,119 @@ export function SettingsDrawer({ visible, onClose, onSave, initialSettings }: Se
 const styles = StyleSheet.create({
     overlay: {
         flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.5)',
+        backgroundColor: 'rgba(0,0,0,0.4)', // Slightly lighter dim
         justifyContent: 'flex-end',
     },
     drawer: {
         backgroundColor: '#fff',
-        borderTopLeftRadius: 20,
-        borderTopRightRadius: 20,
+        borderTopLeftRadius: 16, // iOS native usually ~10-16
+        borderTopRightRadius: 16,
         padding: 20,
+        paddingTop: 24, // More breathing room top
         paddingBottom: 40,
-        minHeight: 400,
+        minHeight: 450,
     },
     header: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 30,
+        marginBottom: 32,
     },
     title: {
-        fontSize: 20,
+        fontSize: 32, // Large Title
         fontWeight: 'bold',
+        color: '#000',
+        letterSpacing: 0.3,
     },
-    closeButton: {
-        color: '#007AFF',
-        fontSize: 16,
+    closeButtonContainer: {
+        width: 30,
+        height: 30,
+        borderRadius: 15,
+        backgroundColor: '#E5E5EA', // iOS System Gray 5/6
+        alignItems: 'center',
+        justifyContent: 'center',
     },
+    // ... (rest of styles need to be preserved or updated slightly?)
+    // I will rewrite the styles block to be safe since I need to remove old 'closeButton' text style
     section: {
-        marginBottom: 25,
+        marginBottom: 28,
     },
     sectionTitle: {
-        fontSize: 14,
-        color: '#666',
-        marginBottom: 10,
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#8E8E93', // iOS Section Header Gray
+        marginBottom: 12,
         textTransform: 'uppercase',
+        letterSpacing: -0.2,
     },
     segmentContainer: {
         flexDirection: 'row',
-        backgroundColor: '#f0f0f0',
-        borderRadius: 8,
-        padding: 4,
+        backgroundColor: '#EEEEEF', // iOS Segmented Control BG
+        borderRadius: 9,
+        padding: 2,
     },
     segmentButton: {
         flex: 1,
-        paddingVertical: 8,
+        paddingVertical: 6,
         alignItems: 'center',
-        borderRadius: 6,
+        borderRadius: 7,
     },
     segmentButtonActive: {
         backgroundColor: '#fff',
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 1,
+        shadowOpacity: 0.15, // iOS shadow is subtle but sharp
+        shadowRadius: 2,
         elevation: 2,
     },
     segmentText: {
-        color: '#666',
+        fontSize: 13,
         fontWeight: '500',
+        color: '#000',
     },
     segmentTextActive: {
-        color: '#000',
         fontWeight: '600',
     },
     row: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginVertical: 15,
+        marginVertical: 12,
+        paddingVertical: 4,
     },
     label: {
-        fontSize: 16,
-        fontWeight: '500',
+        fontSize: 17, // iOS Body size
+        fontWeight: '400',
+        color: '#000',
     },
     disclaimer: {
-        fontSize: 12,
-        color: '#888',
+        fontSize: 13, // iOS Footnote size
+        color: '#8E8E93',
         marginTop: 4,
-        marginRight: 10,
+        marginRight: 16,
+        lineHeight: 18,
     },
     divider: {
         height: 1,
-        backgroundColor: '#eee',
-        marginVertical: 10,
+        backgroundColor: '#F2F2F7', // iOS separator
+        marginVertical: 12,
+        marginLeft: 0,
     },
     footer: {
-        marginTop: 30,
+        marginTop: 32,
     },
     saveButton: {
-        backgroundColor: '#007AFF',
-        padding: 16,
+        backgroundColor: '#007AFF', // iOS Blue
+        paddingVertical: 14,
         borderRadius: 12,
         alignItems: 'center',
     },
     disabledButton: {
-        backgroundColor: '#ccc',
+        backgroundColor: '#D1D1D6',
     },
     saveButtonText: {
         color: '#fff',
-        fontSize: 16,
-        fontWeight: 'bold',
+        fontSize: 17,
+        fontWeight: '600',
     },
 });
