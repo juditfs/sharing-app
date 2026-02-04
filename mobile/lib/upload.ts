@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 import { getSession } from './auth';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 
 export async function uploadEncryptedImage(
     encryptedPhoto: Uint8Array,
@@ -72,11 +72,31 @@ export async function uploadPublicThumbnail(
         encoding: 'base64',
     });
 
-    // Convert base64 to Uint8Array using a polyfill-safe method
-    const binaryString = Buffer.from(base64, 'base64').toString('binary');
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
+    // Convert base64 to Uint8Array using pure JavaScript (no Buffer/atob)
+    // This works reliably in all React Native environments
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    const lookup = new Uint8Array(256);
+    for (let i = 0; i < chars.length; i++) {
+        lookup[chars.charCodeAt(i)] = i;
+    }
+
+    const len = base64.length;
+    let padding = 0;
+    if (base64.endsWith('==')) padding = 2;
+    else if (base64.endsWith('=')) padding = 1;
+
+    const bytes = new Uint8Array((len * 3) / 4 - padding);
+    let p = 0;
+
+    for (let i = 0; i < len; i += 4) {
+        const encoded1 = lookup[base64.charCodeAt(i)];
+        const encoded2 = lookup[base64.charCodeAt(i + 1)];
+        const encoded3 = lookup[base64.charCodeAt(i + 2)];
+        const encoded4 = lookup[base64.charCodeAt(i + 3)];
+
+        bytes[p++] = (encoded1 << 2) | (encoded2 >> 4);
+        if (p < bytes.length) bytes[p++] = ((encoded2 & 15) << 4) | (encoded3 >> 2);
+        if (p < bytes.length) bytes[p++] = ((encoded3 & 3) << 6) | encoded4;
     }
 
     console.log('Uploading public thumbnail to:', publicPath);
