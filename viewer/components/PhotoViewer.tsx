@@ -7,14 +7,18 @@ interface PhotoViewerProps {
 }
 
 export default function PhotoViewer({ photoUrl, shareText, allowDownload }: PhotoViewerProps) {
-    const handleContextMenu = (e: React.MouseEvent) => {
+    const handleBlockInteraction = (e: React.MouseEvent | React.TouchEvent | React.DragEvent) => {
         if (!allowDownload) {
             e.preventDefault();
+            e.stopPropagation();
         }
     };
 
     return (
-        <div className="fixed inset-0 flex flex-col bg-gray-900">
+        <div
+            className="fixed inset-0 flex flex-col bg-gray-900"
+            style={!allowDownload ? { userSelect: 'none', WebkitUserSelect: 'none' } : {}}
+        >
             {/* Photo Container - takes up remaining space */}
             <div className="flex-1 relative overflow-hidden flex items-center justify-center">
                 {allowDownload ? (
@@ -29,8 +33,30 @@ export default function PhotoViewer({ photoUrl, shareText, allowDownload }: Phot
                         style={{
                             backgroundImage: `url(${photoUrl})`,
                             WebkitTouchCallout: 'none',
+                            userSelect: 'none',
+                            WebkitUserSelect: 'none',
                         }}
-                        onContextMenu={handleContextMenu}
+                    />
+                )}
+
+                {/* Transparent interaction blocker overlay */}
+                {!allowDownload && (
+                    <div
+                        className="absolute inset-0 z-50 bg-transparent"
+                        style={{
+                            WebkitTouchCallout: 'none',
+                            userSelect: 'none',
+                            WebkitUserSelect: 'none',
+                            touchAction: 'none',
+                        }}
+                        onContextMenu={handleBlockInteraction}
+                        onTouchStart={handleBlockInteraction}
+                        onTouchEnd={handleBlockInteraction}
+                        onTouchMove={handleBlockInteraction}
+                        onMouseDown={handleBlockInteraction}
+                        onMouseUp={handleBlockInteraction}
+                        onDragStart={handleBlockInteraction}
+                        onDrop={handleBlockInteraction}
                     />
                 )}
             </div>
