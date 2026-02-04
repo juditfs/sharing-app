@@ -100,6 +100,9 @@ export default function ViewPage({ code: propCode }: { code?: string }) {
         return <ErrorScreen error={error} />;
     }
 
+    console.log('📊 ViewPage metadata:', metadata);
+    console.log('🔒 ViewPage allowDownload:', metadata?.allowDownload);
+
     return (
         <PhotoViewer
             photoUrl={photoUrl!}

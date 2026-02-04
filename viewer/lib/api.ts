@@ -44,6 +44,9 @@ export async function getLinkData(shortCode: string): Promise<LinkData> {
 
     return {
         ...data.metadata,
+        allowDownload: !!data.allowDownload,
+        shareText: data.shareText,
+        publicThumbnailUrl: data.publicThumbnailUrl,
         encryptionKey: keyData.key,
         signedPhotoUrl: data.signedUrl,
         signedThumbnailUrl: data.thumbnailUrl,
