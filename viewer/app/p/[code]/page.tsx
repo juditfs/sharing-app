@@ -51,7 +51,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
                 title: 'Sharene',
                 description: shareText,
                 url: `https://viewer-rho-seven.vercel.app/p/${code}`,
-                images: thumbnailUrl ? [{ url: thumbnailUrl, alt: 'Photo preview' }] : [],
+                images: thumbnailUrl ? [{
+                    url: thumbnailUrl,
+                    width: 1200,
+                    height: 630,
+                    alt: 'Photo preview'
+                }] : [],
                 type: 'website',
                 siteName: 'Sharene'
             },

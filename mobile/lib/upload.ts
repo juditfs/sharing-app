@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 import { getSession } from './auth';
-import * as FileSystem from 'expo-file-system/legacy';
+import * as FileSystem from 'expo-file-system';
 
 export async function uploadEncryptedImage(
     encryptedPhoto: Uint8Array,
@@ -52,6 +52,7 @@ export async function uploadEncryptedImage(
 
 /**
  * Upload unencrypted thumbnail to public bucket for WhatsApp/social previews
+ * Uses expo-file-system to read file as bytes directly (avoids atob issues in RN)
  */
 export async function uploadPublicThumbnail(
     thumbnailUri: string
@@ -65,13 +66,14 @@ export async function uploadPublicThumbnail(
     const userId = session.user.id;
     const publicPath = `${userId}/${timestamp}_preview.jpg`;
 
-    // Read thumbnail file as base64
+    // Read file as base64 then convert to Uint8Array
+    // This avoids using atob which may not be available in all RN environments
     const base64 = await FileSystem.readAsStringAsync(thumbnailUri, {
         encoding: 'base64',
     });
 
-    // Convert base64 to Uint8Array (more reliable than blob in RN)
-    const binaryString = atob(base64);
+    // Convert base64 to Uint8Array using a polyfill-safe method
+    const binaryString = Buffer.from(base64, 'base64').toString('binary');
     const bytes = new Uint8Array(binaryString.length);
     for (let i = 0; i < binaryString.length; i++) {
         bytes[i] = binaryString.charCodeAt(i);
