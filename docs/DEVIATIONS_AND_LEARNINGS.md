@@ -585,6 +585,29 @@ Unit Tests (60%)       ← Crypto, Image processing, Utils
 
 ---
 
+### 2.9 Thumbnail Implementation & React Native Quirks
+
+**Finding:** React Native's JS environment differs significantly from Node.js, causing silent failures in standard patterns.
+
+**Evidence:**
+- `Buffer.from()` caused a `ReferenceError` that silently failed the upload (caught in a generic catch block).
+- `public_thumbnail_url` was null in the database, but no error surfaced in the UI.
+- `expo-image-manipulator` behaves unexpectedly when combining `resize` (width+height) actions, sometimes producing empty files.
+
+**Key Insight:** **Test on the platform, not just logic.** Polyfills like `Buffer` are not guaranteed.
+
+**Technical Fixes:**
+1. **Binary Handling**: Replaced `Buffer.from` with a pure JavaScript `base64ToUint8Array` decoder.
+2. **File System**: Migrated to `expo-file-system/legacy` to avoid deprecation warnings for `readAsStringAsync`.
+3. **OG Images**: Implemented a "Resize then Crop" strategy to enforce exact 1200x630px dimensions for WhatsApp/Telegram (using strict aspect ratio calculations), as simply setting width/height distorted or failed.
+
+**Best Practice:**
+- Avoid Node.js globals (`Buffer`, `process`) in React Native code.
+- Use explicit resizing and cropping steps for image manipulation rather than single-step transforms.
+- Ensure error handling logs the *specific* error (e.g., `ReferenceError`) rather than just "Upload failed".
+
+---
+
 ## Part 3: Known Limitations (Prototype)
 
 ### 3.1 Share Sheet on Simulator

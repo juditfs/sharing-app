@@ -147,10 +147,11 @@
 - [x] Image processing test framework
 
 ### Functional Tests
-- [ ] **In-App Flow**: Select image → Get URL → Open in browser → Verify decrypted image displays
+- [x] **In-App Flow**: Select image → Get URL → Open in browser → Verify decrypted image displays
 - [ ] **Share Sheet Flow**: Share from Photos app → Process → Get URL → Verify in browser
-- [ ] **Copy Link**: Tap "Copy Link" → Paste in Notes → Verify correct format
-- [ ] **Thumbnail**: Verify encrypted thumbnail loads in web viewer
+- [x] **Copy Link**: Tap "Copy Link" → Paste in Notes → Verify correct format
+- [x] **Thumbnail**: Verify encrypted thumbnail loads in web viewer
+- [x] **Social Preview**: Verify WhatsApp/Telegram preview shows correct image (Fixed OG metadata & uploads)
 
 ### Security Validation
 - [x] **RLS Policies**: Verified link_secrets and shared_links are protected ✅
@@ -162,7 +163,7 @@
 ### Image Processing Validation
 - [ ] **EXIF Stripped**: Download decrypted image → Run `exiftool` → Confirm no metadata
 - [ ] **Image Resized**: Upload 4000px image → Verify output is max 2048px
-- [ ] **Thumbnail Generated**: Verify thumbnail exists and loads faster than full image
+- [x] **Thumbnail Generated**: Verify thumbnail exists and loads faster than full image
 
 ---
 

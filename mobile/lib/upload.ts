@@ -128,7 +128,7 @@ export interface LinkSettings {
     expiry?: '1h' | '1d' | '1w' | '1m' | '1y' | string;
     allowDownload?: boolean;
     shareText?: string;
-    publicThumbnailUrl?: string;
+    publicThumbnailUrl?: string | null;
 }
 
 export async function createShareLink(

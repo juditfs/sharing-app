@@ -20,7 +20,7 @@ import { uploadEncryptedImage, uploadPublicThumbnail, createShareLink, LinkSetti
 export async function processAndUploadPhoto(
     imageUri: string,
     settings?: LinkSettings
-): Promise<{ shareUrl: string; linkId: string; thumbnailUri: string }> {
+): Promise<{ shareUrl: string; linkId: string; shortCode: string; thumbnailUri: string; publicThumbnailUrl?: string }> {
     const startTime = Date.now();
     console.log('📸 [PERF] Starting photo workflow');
 
@@ -65,7 +65,7 @@ export async function processAndUploadPhoto(
 
     // Create shareable link
     const t6 = Date.now();
-    const { shareUrl, linkId } = await createShareLink(
+    const { shareUrl, linkId, shortCode } = await createShareLink(
         photoPath,
         thumbnailPath,
         encryptionKey,
@@ -76,5 +76,5 @@ export async function processAndUploadPhoto(
     const totalTime = Date.now() - startTime;
     console.log(`✅ [PERF] Total workflow time: ${totalTime}ms (${(totalTime / 1000).toFixed(1)}s)`);
 
-    return { shareUrl, linkId, thumbnailUri };
+    return { shareUrl, linkId, shortCode, thumbnailUri, publicThumbnailUrl };
 }
