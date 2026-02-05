@@ -42,7 +42,7 @@ export function SettingsDrawer({ visible, onClose, onSave, initialSettings, avai
         }).start(() => onClose());
     };
 
-    const handleSave = async () => {
+    const handleGetLink = async () => {
         try {
             setSaving(true);
             await onSave(settings);
@@ -143,14 +143,14 @@ export function SettingsDrawer({ visible, onClose, onSave, initialSettings, avai
 
                         <View style={styles.footer}>
                             <TouchableOpacity
-                                style={[styles.saveButton, saving && styles.disabledButton]}
-                                onPress={handleSave}
+                                style={[styles.getLinkButton, saving && styles.disabledButton]}
+                                onPress={handleGetLink}
                                 disabled={saving}
                             >
                                 {saving ? (
                                     <ActivityIndicator color="#fff" />
                                 ) : (
-                                    <Text style={styles.saveButtonText}>Save Changes</Text>
+                                    <Text style={styles.getLinkButtonText}>Get link</Text>
                                 )}
                             </TouchableOpacity>
                         </View>
@@ -265,7 +265,7 @@ const styles = StyleSheet.create({
     footer: {
         marginTop: 32,
     },
-    saveButton: {
+    getLinkButton: {
         backgroundColor: '#007AFF', // iOS Blue
         paddingVertical: 14,
         borderRadius: 12,
@@ -274,7 +274,7 @@ const styles = StyleSheet.create({
     disabledButton: {
         backgroundColor: '#D1D1D6',
     },
-    saveButtonText: {
+    getLinkButtonText: {
         color: '#fff',
         fontSize: 17,
         fontWeight: '600',

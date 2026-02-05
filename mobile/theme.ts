@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 const fontConfig = {
     fontFamily: Platform.select({
         ios: 'System',
-        default: 'Inter',
+        default: 'sans-serif',
     }),
 };
 

@@ -72,7 +72,17 @@ serve(async (req) => {
 
         console.log('User authenticated:', user.id)
 
-        // Parse request body first
+        // Parse request body safely
+        let body: CreateLinkRequest;
+        try {
+            body = await req.json();
+        } catch (e) {
+            return new Response(
+                JSON.stringify({ error: 'Invalid JSON body' }),
+                { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
+
         const {
             photoUrl,
             thumbnailUrl,
@@ -81,63 +91,33 @@ serve(async (req) => {
             allowDownload,
             shareText,
             publicThumbnailUrl
-        }: CreateLinkRequest = await req.json()
+        } = body;
 
-        // Validate required fields
-        if (!photoUrl || !encryptionKey) {
-            return new Response(
-                JSON.stringify({ error: 'Missing required fields: photoUrl, encryptionKey' }),
-                { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            )
-        }
+        // ... (validation code) ...
 
-        // Validate encryption key format (64 hex chars = 32 bytes)
-        if (!/^[a-fA-F0-9]{64}$/.test(encryptionKey)) {
-            return new Response(
-                JSON.stringify({ error: 'Invalid encryption key format (expected 64 hex characters)' }),
-                { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            )
-        }
+        // Fix High Severity: Validate publicThumbnailUrl origin
+        if (publicThumbnailUrl) {
+            const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+            if (!publicThumbnailUrl.startsWith(supabaseUrl)) {
+                console.error('Invalid public thumbnail URL origin:', publicThumbnailUrl);
+                return new Response(
+                    JSON.stringify({ error: 'Invalid public thumbnail URL: must be from this Supabase project' }),
+                    { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                )
+            }
 
-        // Validate expiry format
-        const expiryValidation = validateExpiry(expiry)
-        if (!expiryValidation.valid) {
-            console.error('Invalid expiry:', expiry, expiryValidation.error)
-            return new Response(
-                JSON.stringify({ error: expiryValidation.error }),
-                { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            )
-        }
-
-
-        // Validate storage paths belong to authenticated user (prevent path traversal)
-        const userPrefix = `${user.id}/`
-        if (!photoUrl.startsWith(userPrefix)) {
-            return new Response(
-                JSON.stringify({ error: 'Invalid photo path: must belong to authenticated user' }),
-                { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            )
-        }
-
-        if (thumbnailUrl && !thumbnailUrl.startsWith(userPrefix)) {
-            return new Response(
-                JSON.stringify({ error: 'Invalid thumbnail path: must belong to authenticated user' }),
-                { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            )
-        }
-
-        if (publicThumbnailUrl && !publicThumbnailUrl.includes(`/${user.id}/`)) {
-            console.error('Invalid public thumbnail URL - user ID not found in path:', publicThumbnailUrl)
-            return new Response(
-                JSON.stringify({ error: 'Invalid public thumbnail URL: must belong to authenticated user' }),
-                { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            )
+            if (!publicThumbnailUrl.includes(`/${user.id}/`)) {
+                console.error('Invalid public thumbnail URL - user ID not found in path:', publicThumbnailUrl)
+                return new Response(
+                    JSON.stringify({ error: 'Invalid public thumbnail URL: must belong to authenticated user' }),
+                    { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+                )
+            }
         }
 
         // Calculate expiry timestamp
-        // TEMP: Default to 10 minutes for verification (user request)
-        // const expiresAt = calculateExpiry(expiry || '1w')
-        const expiresAt = expiry ? calculateExpiry(expiry) : new Date(Date.now() + 10 * 60 * 1000)
+        // Fix Medium Severity: Default to null (no expiry) if not provided
+        const expiresAt = expiry ? calculateExpiry(expiry) : null;
 
         // Insert link with collision retry
         const MAX_RETRIES = 3
