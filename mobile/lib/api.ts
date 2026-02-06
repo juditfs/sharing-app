@@ -26,3 +26,32 @@ export async function updateLink(
 
     console.log('Link updated successfully');
 }
+
+export interface LinkItem {
+    id: string;
+    short_code: string;
+    public_thumbnail_url: string | null;
+    view_count: number;
+    created_at: string;
+    // We fetch settings just in case we need them for the drawer immediately
+    allow_download: boolean;
+    share_text: string;
+    expires_at: string | null;
+}
+
+/**
+ * Fetch all links created by the current user
+ */
+export async function getUserLinks(): Promise<LinkItem[]> {
+    const { data, error } = await supabase
+        .from('shared_links')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+    if (error) {
+        console.error('Failed to fetch user links:', error);
+        throw error;
+    }
+
+    return data as LinkItem[];
+}

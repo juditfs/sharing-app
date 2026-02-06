@@ -10,54 +10,69 @@ import { signInAnonymously } from './lib/auth';
 import { handlePhotoError } from './lib/errorHandling';
 import { processAndUploadPhoto } from './lib/photoWorkflow';
 import { SettingsDrawer } from './components/SettingsDrawer';
-import { LinkSettings, updateLink } from './lib/api';
+import { DashboardScreen } from './components/DashboardScreen';
+import { LinkSettings, updateLink, LinkItem, getUserLinks } from './lib/api';
 import { theme } from './theme';
 
 export default function App() {
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [sessionReady, setSessionReady] = useState(false);
+  const [view, setView] = useState<'upload' | 'success' | 'dashboard'>('upload');
+
+  // Navigation state helper
+  const [hasLinks, setHasLinks] = useState(false);
 
   // Toast state
   const [toastVisible, setToastVisible] = useState(false);
+  const [toastMessage, setToastMessage] = useState('Copied link');
 
-  // State for the currently created link
+  // State for the currently created link (for Success view)
   const [currentLink, setCurrentLink] = useState<{
     shortCode: string;
     shareUrl: string;
     thumbnailUri: string;
     settings: LinkSettings;
-    availableThumbnailUrl?: string | null; // Persist the URL even if OFF
+    availableThumbnailUrl?: string | null;
   } | null>(null);
 
+  // Settings Drawer state
   const [settingsVisible, setSettingsVisible] = useState(false);
+  // We can open settings for the "currentLink" OR a link from the dashboard
+  // If this is null, we might be editing currentLink (legacy logic) or we need a way to track which link is being edited.
+  // Let's store the full link data being edited.
+  const [editingLink, setEditingLink] = useState<{
+    shortCode: string;
+    settings: LinkSettings;
+    availableThumbnailUrl?: string | null;
+    shareUrl: string; // Needed to update state after save
+  } | null>(null);
+
 
   useEffect(() => {
-    // DEBUG: Check environment and network
-    const checkNetwork = async () => {
+    const init = async () => {
       try {
-        console.log('DEBUG: Checking Supabase connection...');
-        const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
+        await signInAnonymously();
+        setSessionReady(true);
+        console.log('Anonymous sign-in successful');
 
-        if (url) {
-          const resp = await fetch(`${url}/auth/v1/health`);
-          console.log('DEBUG: Health status:', resp.status);
+        // Check for existing links to determine home screen
+        const links = await getUserLinks();
+        if (links.length > 0) {
+          setHasLinks(true);
+          setView('dashboard');
+        } else {
+          setHasLinks(false);
+          setView('upload');
         }
-      } catch (e) {
-        console.error('DEBUG: Network check failed:', e);
+      } catch (err) {
+        console.error('Initialization failed:', err);
+        Alert.alert('Error', 'Failed to initialize. Please restart.');
+      } finally {
+        setInitialLoading(false);
       }
     };
-    checkNetwork();
-
-    // Sign in anonymously on app launch
-    signInAnonymously()
-      .then(() => {
-        console.log('Anonymous sign-in successful');
-        setSessionReady(true);
-      })
-      .catch((err) => {
-        console.error('Anonymous sign-in failed:', err);
-        Alert.alert('Authentication Error', 'Failed to initialize session. Please restart the app.');
-      });
+    init();
   }, []);
 
   const handlePhotoUpload = async (uri: string) => {
@@ -68,7 +83,6 @@ export default function App() {
         expiry: '1h',
         shareText: 'user shared a photo',
         allowDownload: false,
-        // publicThumbnailUrl is handled in workflow, defaults to created unless specified otherwise
       };
 
       const uploadResult = await processAndUploadPhoto(
@@ -79,20 +93,30 @@ export default function App() {
       // Auto-copy to clipboard
       await Clipboard.setStringAsync(uploadResult.shareUrl);
 
-      // Update state to show Success UI
-      setCurrentLink({
+      // Set current link and switch to success view
+      const newLink = {
         shortCode: uploadResult.shortCode,
         shareUrl: uploadResult.shareUrl,
         thumbnailUri: uploadResult.thumbnailUri,
         settings: {
           ...defaultSettings,
-          // Use returned publicThumbnailUrl or null details
           publicThumbnailUrl: uploadResult.publicThumbnailUrl
         },
-        availableThumbnailUrl: uploadResult.publicThumbnailUrl // Persist this!
+        availableThumbnailUrl: uploadResult.publicThumbnailUrl
+      };
+      setCurrentLink(newLink);
+      setHasLinks(true); // User now has links!
+      setView('success');
+
+      // Setup editing state immediately in case they click "Edit Settings"
+      setEditingLink({
+        shortCode: newLink.shortCode,
+        settings: newLink.settings,
+        availableThumbnailUrl: newLink.availableThumbnailUrl,
+        shareUrl: newLink.shareUrl
       });
 
-      // Show Toast instead of Alert
+      setToastMessage('Copied link');
       setToastVisible(true);
 
     } catch (error: any) {
@@ -138,18 +162,53 @@ export default function App() {
     }
   };
 
-  const handleCopyLink = async () => {
-    if (currentLink?.shareUrl) {
-      await Clipboard.setStringAsync(currentLink.shareUrl);
-      setToastVisible(true);
-    }
+  const handleCopyLink = async (url: string) => {
+    await Clipboard.setStringAsync(url);
+    setToastMessage('Copied link');
+    setToastVisible(true);
   };
 
-  const handleCreateNew = () => {
+  const handleBackToHome = () => {
+    // If the user has links, Home is Dashboard.
+    // Otherwise, Home is Upload (but we only show Back if we are NOT at Home).
+    if (hasLinks) {
+      setView('dashboard');
+    } else {
+      setView('upload');
+    }
     setCurrentLink(null);
+    setEditingLink(null);
   };
 
   const dismissToast = () => setToastVisible(false);
+
+  // --- Dashboard Logic ---
+  // const openDashboard = () => { setView('dashboard'); }; // Removed as per request
+
+  const handleDashboardSettings = (link: LinkItem) => {
+    setEditingLink({
+      shortCode: link.short_code,
+      settings: {
+        expiry: link.expires_at || undefined, // TODO: Better mapping needed if strict types
+        shareText: link.share_text,
+        allowDownload: link.allow_download,
+        publicThumbnailUrl: link.public_thumbnail_url || undefined,
+      },
+      availableThumbnailUrl: link.public_thumbnail_url,
+      shareUrl: process.env.EXPO_PUBLIC_VIEWER_URL
+        ? `${process.env.EXPO_PUBLIC_VIEWER_URL}/p/${link.short_code}`
+        : `https://viewer-rho-seven.vercel.app/p/${link.short_code}`
+    });
+    setSettingsVisible(true);
+  };
+
+  if (initialLoading) {
+    return (
+      <View style={[styles.container, styles.center]}>
+        <ActivityIndicator size="large" />
+      </View>
+    );
+  }
 
   return (
     <PaperProvider theme={theme}>
@@ -157,98 +216,133 @@ export default function App() {
         <View style={styles.container}>
           <StatusBar style="auto" />
 
-          {!currentLink ? (
-            // Upload Screen
-            <>
-              <Text variant="displayMedium" style={styles.title}>Sharene</Text>
-              <Text variant="titleMedium" style={styles.subtitle}>Encrypted Photo Sharing</Text>
-
-              {loading ? (
-                <ActivityIndicator size="large" />
-              ) : (
-                <View style={styles.buttonContainer}>
-                  <Button
-                    mode="contained"
-                    icon="camera"
-                    onPress={handleTakePhoto}
-                    disabled={!sessionReady}
-                    style={styles.button}
-                  >
-                    Take Photo
-                  </Button>
-                  <Button
-                    mode="outlined"
-                    icon="image"
-                    onPress={handlePickPhoto}
-                    disabled={!sessionReady}
-                    style={styles.button}
-                  >
-                    Choose from Library
-                  </Button>
-                </View>
-              )}
-            </>
-          ) : (
-            // Success / Management Screen
-            <View style={styles.successContainer}>
-              <Text variant="headlineMedium" style={styles.successTitle}>Link Created!</Text>
-
-              <Card style={styles.card}>
-                <Card.Cover source={{ uri: currentLink.thumbnailUri }} />
-                <Card.Content>
-                  <Text variant="bodyMedium" style={styles.linkText} numberOfLines={1}>
-                    {currentLink.shareUrl}
-                  </Text>
-                </Card.Content>
-                <Card.Actions style={styles.cardActions}>
-                  <Button onPress={handleCopyLink}>Copy Link</Button>
-                  <Button onPress={() => setSettingsVisible(true)}>Edit Settings</Button>
-                </Card.Actions>
-              </Card>
-
-              <Button
-                mode="contained"
-                onPress={handleCreateNew}
-                style={styles.createNewButton}
-              >
-                Share Another
+          {/* Header Area */}
+          <View style={styles.header}>
+            {/* Show Back if:
+                  - We are NOT on Dashboard AND we have links (Dashboard is Home)
+                  - OR We are on Success/Upload but we came from somewhere? 
+                  - Basically if view != current Home.
+                  - If result of logic below is that we shouldn't supply a back button, we show nothing.
+              */}
+            {(view !== 'dashboard' && hasLinks) ? (
+              <Button mode="text" icon="arrow-left" onPress={handleBackToHome} compact>
+                Back to Links
               </Button>
+            ) : null}
 
-              <SettingsDrawer
-                visible={settingsVisible}
-                onClose={() => setSettingsVisible(false)}
-                initialSettings={currentLink.settings}
-                availableThumbnailUrl={currentLink.availableThumbnailUrl} // Pass it here
-                onSave={async (newSettings: LinkSettings) => {
-                  try {
-                    // Update backend
-                    await updateLink(currentLink.shortCode, newSettings);
+            <View style={{ flex: 1 }} />
+          </View>
 
-                    // Update local state with cache-busted URL
-                    // Use random 3 chars to prevent collision and ensure update
+          <View style={[styles.content, view !== 'dashboard' && { justifyContent: 'center' }]}>
+            {view === 'upload' && (
+              <>
+                <Text variant="displayMedium" style={styles.title}>Sharene</Text>
+                <Text variant="titleMedium" style={styles.subtitle}>Encrypted Photo Sharing</Text>
+
+                {loading ? (
+                  <ActivityIndicator size="large" />
+                ) : (
+                  <View style={styles.buttonContainer}>
+                    <Button
+                      mode="contained"
+                      icon="camera"
+                      onPress={handleTakePhoto}
+                      disabled={!sessionReady}
+                      style={styles.button}
+                    >
+                      Take Photo
+                    </Button>
+                    <Button
+                      mode="outlined"
+                      icon="image"
+                      onPress={handlePickPhoto}
+                      disabled={!sessionReady}
+                      style={styles.button}
+                    >
+                      Choose from Library
+                    </Button>
+                  </View>
+                )}
+              </>
+            )}
+
+            {view === 'success' && currentLink && (
+              <View style={styles.successContainer}>
+                <Text variant="headlineMedium" style={styles.successTitle}>Link Created!</Text>
+
+                <Card style={styles.card}>
+                  <Card.Cover source={{ uri: currentLink.thumbnailUri }} />
+                  <Card.Content>
+                    <Text variant="bodyMedium" style={styles.linkText} numberOfLines={1}>
+                      {currentLink.shareUrl}
+                    </Text>
+                  </Card.Content>
+                  <Card.Actions style={styles.cardActions}>
+                    <Button onPress={() => handleCopyLink(currentLink.shareUrl)}>Copy Link</Button>
+                    <Button onPress={() => setSettingsVisible(true)}>Edit Settings</Button>
+                  </Card.Actions>
+                </Card>
+
+                <Button
+                  mode="contained"
+                  onPress={() => setView('upload')}
+                  style={styles.createNewButton}
+                >
+                  Share Another
+                </Button>
+              </View>
+            )}
+
+            {view === 'dashboard' && (
+              <DashboardScreen
+                onOpenSettings={handleDashboardSettings}
+                onCopyLink={(item: any) => handleCopyLink(item.shareUrl)}
+                onCreateNew={() => setView('upload')}
+              />
+            )}
+          </View>
+
+          {/* Shared Settings Drawer */}
+          {editingLink && (
+            <SettingsDrawer
+              visible={settingsVisible}
+              onClose={() => setSettingsVisible(false)}
+              initialSettings={editingLink.settings}
+              availableThumbnailUrl={editingLink.availableThumbnailUrl}
+              onSave={async (newSettings: LinkSettings) => {
+                try {
+                  // Update backend
+                  await updateLink(editingLink.shortCode, newSettings);
+
+                  // Update editing link state to reflect cache bust if needed, 
+                  // though for dashboard list we rely on refresh.
+                  // For success view, we update currentLink to reflected changes immediately.
+
+                  if (view === 'success') {
                     const randomTag = Math.random().toString(36).substring(2, 5);
-                    const baseUrl = currentLink.shareUrl.split('?')[0];
+                    const baseUrl = currentLink!.shareUrl.split('?')[0];
                     const newShareUrl = `${baseUrl}?v=${randomTag}`;
 
-                    // Auto-copy new link and show toast
-                    await Clipboard.setStringAsync(newShareUrl);
-                    setToastVisible(true);
+                    setCurrentLink(prev => prev ? ({
+                      ...prev,
+                      settings: newSettings,
+                      shareUrl: newShareUrl
+                    }) : null);
 
-                    setCurrentLink(prev => {
-                      if (!prev) return null;
-                      return {
-                        ...prev,
-                        settings: newSettings,
-                        shareUrl: newShareUrl
-                      };
-                    });
-                  } catch (e) {
-                    console.error('Failed to save settings:', e);
-                    Alert.alert('Error', 'Failed to save settings. Please try again.');
+                    await Clipboard.setStringAsync(newShareUrl);
+                    setToastMessage('Link updated & copied');
+                    setToastVisible(true);
+                  } else {
+                    setToastMessage('Settings saved');
+                    setToastVisible(true);
                   }
-                }}
-              />
-            </View>
+
+                } catch (e) {
+                  console.error('Failed to save settings:', e);
+                  Alert.alert('Error', 'Failed to save settings. Please try again.');
+                }
+              }}
+            />
           )}
 
           <Snackbar
@@ -259,7 +353,7 @@ export default function App() {
           >
             <View style={styles.snackbarContent}>
               <MaterialCommunityIcons name="check-circle" size={20} color="white" />
-              <Text style={styles.snackbarText}>Copied link</Text>
+              <Text style={styles.snackbarText}>{toastMessage}</Text>
             </View>
           </Snackbar>
         </View>
@@ -272,9 +366,24 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  center: {
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 20,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 50, // Status bar path
+    paddingBottom: 10,
+    width: '100%',
+  },
+  content: {
+    flex: 1,
+    alignItems: 'center',
+    width: '100%',
+    // justifyContent: 'center' // Removed global centering
   },
   title: {
     fontWeight: 'bold',
@@ -296,6 +405,7 @@ const styles = StyleSheet.create({
   successContainer: {
     width: '100%',
     alignItems: 'center',
+    paddingHorizontal: 20,
     gap: 24,
   },
   successTitle: {
