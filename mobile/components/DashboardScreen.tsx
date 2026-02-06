@@ -1,10 +1,14 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { StyleSheet, View, FlatList, RefreshControl, Animated, TouchableWithoutFeedback, Easing, Share, Alert, TouchableOpacity } from 'react-native';
-import { Text, ActivityIndicator, IconButton, Chip, Divider, FAB } from 'react-native-paper'; // Removed Menu import
+import { StyleSheet, View, FlatList, RefreshControl, Animated, TouchableWithoutFeedback, Easing, Share, Alert, TouchableOpacity, Modal, LayoutRectangle, Dimensions } from 'react-native';
+import { Text, ActivityIndicator, IconButton, Chip, Divider, FAB } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import { BlurView } from 'expo-blur';
+import * as Clipboard from 'expo-clipboard'; // Fixed import
 
 import { getUserLinks, LinkItem, deleteLink } from '../lib/api';
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface DashboardScreenProps {
     onOpenSettings: (link: LinkItem) => void;
@@ -18,12 +22,24 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
+    // Regular Menu (Black FAB)
     const [menuVisible, setMenuVisible] = useState(false);
-    const [selectedLink, setSelectedLink] = useState<LinkItem | null>(null);
+
+    // Context Menu State
+    const [activeLink, setActiveLink] = useState<LinkItem | null>(null);
+    const [activeItemLayout, setActiveItemLayout] = useState<LayoutRectangle | null>(null);
+    const [contextMenuVisible, setContextMenuVisible] = useState(false);
 
     // Animation Values
     const menuAnim = useRef(new Animated.Value(0)).current;
     const fabScale = useRef(new Animated.Value(1)).current;
+
+    // Context Menu Animations
+    const overlayAnim = useRef(new Animated.Value(0)).current; // 0 -> 1 (Opacity)
+    const activeItemScale = useRef(new Animated.Value(1)).current; // 1 -> 1.05
+
+    // Refs for list items to measure
+    const itemRefs = useRef<Map<string, View>>(new Map());
 
     const openMenu = () => {
         setMenuVisible(true);
@@ -58,7 +74,56 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
         ]).start(() => setMenuVisible(false));
     };
 
+    const handleLongPress = (link: LinkItem, id: string) => {
+        const ref = itemRefs.current.get(id);
+        if (ref) {
+            ref.measureInWindow((x, y, width, height) => {
+                setActiveItemLayout({ x, y, width, height });
+                setActiveLink(link);
+                setContextMenuVisible(true);
+
+                // Start animations
+                Animated.parallel([
+                    Animated.timing(overlayAnim, {
+                        toValue: 1,
+                        duration: 200,
+                        useNativeDriver: true,
+                        easing: Easing.out(Easing.ease),
+                    }),
+                    Animated.spring(activeItemScale, {
+                        toValue: 1.02,
+                        friction: 7,
+                        tension: 40,
+                        useNativeDriver: true,
+                    })
+                ]).start();
+            });
+        }
+    };
+
+    const closeContextMenu = () => {
+        Animated.parallel([
+            Animated.timing(overlayAnim, {
+                toValue: 0,
+                duration: 200,
+                useNativeDriver: true,
+            }),
+            Animated.timing(activeItemScale, {
+                toValue: 1,
+                duration: 200,
+                useNativeDriver: true,
+            })
+        ]).start(() => {
+            setContextMenuVisible(false);
+            setActiveLink(null);
+            setActiveItemLayout(null);
+        });
+    };
+
     const handleDeleteLink = async (link: LinkItem) => {
+        // Close menu first
+        closeContextMenu();
+
         Alert.alert(
             "Delete Link",
             "Are you sure you want to delete this link? This action cannot be undone.",
@@ -69,11 +134,9 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
                     style: "destructive",
                     onPress: async () => {
                         try {
-                            setLoading(true);
+                            setLoading(true); // Maybe local loading state better
                             await deleteLink(link.short_code);
-                            // Optimistic remove or reload
                             setLinks(current => current.filter(l => l.id !== link.id));
-                            setSelectedLink(null);
                         } catch (e) {
                             Alert.alert("Error", "Failed to delete link");
                         } finally {
@@ -85,13 +148,17 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
         );
     };
 
-    const handleShareLink = async (link: LinkItem, url: string) => {
+    const handleShareLink = async (link: LinkItem) => {
+        const url = process.env.EXPO_PUBLIC_VIEWER_URL
+            ? `${process.env.EXPO_PUBLIC_VIEWER_URL}/p/${link.short_code}`
+            : `https://viewer-rho-seven.vercel.app/p/${link.short_code}`;
+
         try {
             await Share.share({
                 message: `Check out this link: ${url}`,
                 url: url, // iOS
             });
-            setSelectedLink(null);
+            closeContextMenu();
         } catch (error) {
             console.error(error);
         }
@@ -108,8 +175,6 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
             setRefreshing(false);
         }
     };
-    // ... existing code ...
-
 
     useEffect(() => {
         loadLinks();
@@ -121,14 +186,15 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
     };
 
     const renderItem = ({ item }: { item: LinkItem }) => {
-        const shareUrl = process.env.EXPO_PUBLIC_VIEWER_URL
-            ? `${process.env.EXPO_PUBLIC_VIEWER_URL}/p/${item.short_code}`
-            : `https://viewer-rho-seven.vercel.app/p/${item.short_code}`;
+
 
         return (
             <TouchableOpacity
+                ref={(ref) => {
+                    if (ref) itemRefs.current.set(item.id, ref as unknown as View);
+                }}
                 activeOpacity={0.7}
-                onLongPress={() => setSelectedLink(item)}
+                onLongPress={() => handleLongPress(item, item.id)}
                 delayLongPress={200}
                 style={styles.itemContainer}
             >
@@ -163,20 +229,148 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
                         {item.view_count || 0}
                     </Chip>
 
-                    <IconButton
-                        icon="content-copy"
-                        size={20}
-                        onPress={() => onCopyLink({ ...item, shareUrl } as any)}
-                    />
-                    <IconButton
-                        icon="cog"
-                        size={20}
-                        onPress={() => onOpenSettings(item)}
-                    />
                 </View>
             </TouchableOpacity>
         );
     };
+
+    // Render logic for the Cloned Item in Overlay
+    const renderActiveItem = () => {
+        if (!activeLink || !activeItemLayout) return null;
+
+        const item = activeLink;
+
+        return (
+            <Animated.View
+                style={[
+                    styles.itemContainer,
+                    {
+                        position: 'absolute',
+                        top: activeItemLayout.y,
+                        left: activeItemLayout.x,
+                        width: activeItemLayout.width,
+                        height: activeItemLayout.height,
+                        backgroundColor: 'white',
+                        borderRadius: 12,
+                        elevation: 5, // Android shadow
+                        shadowColor: "#000", // iOS shadow
+                        shadowOffset: { width: 0, height: 4 },
+                        shadowOpacity: 0.2,
+                        shadowRadius: 8,
+                        transform: [{ scale: activeItemScale }],
+                        zIndex: 100,
+                        marginHorizontal: 0, // Reset margin since position is absolute
+                        marginTop: 0,
+                    }
+                ]}
+            >
+                {/* Re-render exact item content */}
+                <View style={styles.thumbnailContainer}>
+                    {item.public_thumbnail_url ? (
+                        <Image
+                            source={{ uri: item.public_thumbnail_url }}
+                            style={styles.thumbnail}
+                            contentFit="cover"
+                        />
+                    ) : (
+                        <View style={styles.placeholderThumbnail}>
+                            <MaterialCommunityIcons name="lock" size={24} color="#aaa" />
+                        </View>
+                    )}
+                </View>
+                <View style={styles.infoContainer}>
+                    <Text variant="titleMedium" style={styles.shortCode}>/{item.short_code}</Text>
+                    <Text variant="bodySmall" style={styles.date}>{new Date(item.created_at).toLocaleDateString()}</Text>
+                </View>
+                <View style={styles.actionsContainer}>
+                    <Chip icon="eye" style={styles.viewChip} textStyle={{ fontSize: 10, paddingVertical: 1 }}>{item.view_count || 0}</Chip>
+                </View>
+            </Animated.View>
+        );
+    };
+
+    const renderContextMenu = () => {
+        if (!activeItemLayout) return null;
+
+        // Calculate if menu should be above or below
+        const spaceBelow = SCREEN_HEIGHT - (activeItemLayout.y + activeItemLayout.height);
+        const menuHeight = 180; // Approx height for new layout
+        const showBelow = spaceBelow > menuHeight + 50;
+
+        const menuTop = showBelow
+            ? activeItemLayout.y + activeItemLayout.height + 16
+            : activeItemLayout.y - menuHeight - 16;
+
+        const menuWidth = 280;
+        const menuLeft = (SCREEN_WIDTH - menuWidth) / 2;
+
+        return (
+            <Animated.View style={[
+                styles.contextMenu,
+                {
+                    opacity: overlayAnim,
+                    top: menuTop,
+                    left: menuLeft,
+                    width: menuWidth,
+                }
+            ]}>
+                {/* Top Row: Horizontal Actions */}
+                <View style={styles.contextRow}>
+                    <View style={styles.contextActionItem}>
+                        <IconButton
+                            icon="content-copy"
+                            size={24}
+                            onPress={() => {
+                                const url = process.env.EXPO_PUBLIC_VIEWER_URL
+                                    ? `${process.env.EXPO_PUBLIC_VIEWER_URL}/p/${activeLink?.short_code}`
+                                    : `https://viewer-rho-seven.vercel.app/p/${activeLink?.short_code}`;
+                                closeContextMenu();
+                                onCopyLink({ ...activeLink, shareUrl: url } as any);
+                            }}
+                        />
+                        <Text variant="labelSmall">Copy</Text>
+                    </View>
+                    <View style={styles.contextActionItem}>
+                        <IconButton
+                            icon="share-variant"
+                            size={24}
+                            onPress={() => {
+                                if (activeLink) handleShareLink(activeLink);
+                            }}
+                        />
+                        <Text variant="labelSmall">Share</Text>
+                    </View>
+                    <View style={styles.contextActionItem}>
+                        <IconButton
+                            icon="delete-outline"
+                            iconColor="red"
+                            size={24}
+                            onPress={() => {
+                                if (activeLink) handleDeleteLink(activeLink);
+                            }}
+                        />
+                        <Text variant="labelSmall" style={{ color: 'red' }}>Delete</Text>
+                    </View>
+                </View>
+
+                <Divider style={{ width: '80%', alignSelf: 'center', backgroundColor: '#e0e0e0' }} />
+
+                {/* Bottom Row: Settings */}
+                <TouchableOpacity
+                    style={styles.contextVerticalItem}
+                    onPress={() => {
+                        if (activeLink) {
+                            closeContextMenu();
+                            onOpenSettings(activeLink);
+                        }
+                    }}
+                >
+                    <MaterialCommunityIcons name="cog-outline" size={24} color="#333" />
+                    <Text style={styles.contextVerticalText}>Edit Settings</Text>
+                </TouchableOpacity>
+            </Animated.View>
+        );
+    }
 
     if (loading && !refreshing) {
         return (
@@ -207,112 +401,22 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
                 }
             />
 
-            {/* Portal-like effect for custom menu, but kept in layout for simplicity since it's absolute positioned */}
-            {menuVisible && (
-                <TouchableWithoutFeedback onPress={closeMenu}>
-                    <View style={styles.overlay} />
-                </TouchableWithoutFeedback>
-            )}
-
-            {/* Context Menu Overlay */}
-            {selectedLink && (
-                <TouchableWithoutFeedback onPress={() => setSelectedLink(null)}>
-                    <View style={styles.contextOverlay}>
-                        <TouchableWithoutFeedback>
-                            <View style={styles.contextMenuContainer}>
-                                {/* Top Row: Actions */}
-                                <View style={styles.contextRow}>
-                                    <View style={styles.contextActionItem}>
-                                        <IconButton
-                                            icon="content-copy"
-                                            size={24}
-                                            onPress={() => {
-                                                const url = process.env.EXPO_PUBLIC_VIEWER_URL
-                                                    ? `${process.env.EXPO_PUBLIC_VIEWER_URL}/p/${selectedLink.short_code}`
-                                                    : `https://viewer-rho-seven.vercel.app/p/${selectedLink.short_code}`;
-                                                onCopyLink({ ...selectedLink, shareUrl: url } as any);
-                                                setSelectedLink(null);
-                                            }}
-                                        />
-                                        <Text variant="labelSmall">Copy</Text>
-                                    </View>
-                                    <View style={styles.contextActionItem}>
-                                        <IconButton
-                                            icon="share-variant"
-                                            size={24}
-                                            onPress={() => {
-                                                const url = process.env.EXPO_PUBLIC_VIEWER_URL
-                                                    ? `${process.env.EXPO_PUBLIC_VIEWER_URL}/p/${selectedLink.short_code}`
-                                                    : `https://viewer-rho-seven.vercel.app/p/${selectedLink.short_code}`;
-                                                handleShareLink(selectedLink, url);
-                                            }}
-                                        />
-                                        <Text variant="labelSmall">Share</Text>
-                                    </View>
-                                    <View style={styles.contextActionItem}>
-                                        <IconButton
-                                            icon="delete"
-                                            iconColor="red"
-                                            size={24}
-                                            onPress={() => handleDeleteLink(selectedLink)}
-                                        />
-                                        <Text variant="labelSmall" style={{ color: 'red' }}>Delete</Text>
-                                    </View>
-                                </View>
-
-                                <Divider style={{ width: '100%' }} />
-
-                                {/* Bottom Row: Settings */}
-                                <View style={styles.contextRowVertical}>
-                                    <TouchableOpacity
-                                        style={styles.contextVerticalItem}
-                                        onPress={() => {
-                                            onOpenSettings(selectedLink);
-                                            setSelectedLink(null);
-                                        }}
-                                    >
-                                        <MaterialCommunityIcons name="cog" size={24} color="#333" />
-                                        <Text style={styles.contextVerticalText}>Edit Settings</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
-                        </TouchableWithoutFeedback>
-                    </View>
-                </TouchableWithoutFeedback>
-            )}
-
+            {/*  Floating Action Button (Menu) */}
             <View style={styles.fabContainer}>
-                {/* FAB - Animated Scale Out */}
                 <Animated.View style={{
                     transform: [{ scale: fabScale }],
                     opacity: fabScale,
-                    position: 'absolute',
-                    right: 0,
-                    bottom: 0,
+                    position: 'absolute', right: 0, bottom: 0,
                 }}>
-                    <FAB
-                        icon="plus"
-                        color="white"
-                        style={styles.fab}
-                        onPress={openMenu}
-                    />
+                    <FAB icon="plus" color="white" style={styles.fab} onPress={openMenu} />
                 </Animated.View>
 
-                {/* Menu - Animated Scale In from bottom right */}
                 {menuVisible && (
                     <Animated.View style={[
                         styles.customMenu,
                         {
                             opacity: menuAnim,
-                            transform: [
-                                { scale: menuAnim },
-                                {
-                                    translateY: menuAnim.interpolate({
-                                        inputRange: [0, 1],
-                                        outputRange: [20, 0] // Slide up slightly
-                                    })
-                                }
-                            ]
+                            transform: [{ scale: menuAnim }, { translateY: menuAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }]
                         }
                     ]}>
                         <TouchableWithoutFeedback onPress={() => { closeMenu(); onTakePhoto(); }}>
@@ -321,9 +425,6 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
                                 <Text style={styles.menuText}>Take Photo</Text>
                             </View>
                         </TouchableWithoutFeedback>
-
-                        {/* No Divider as requested */}
-
                         <TouchableWithoutFeedback onPress={() => { closeMenu(); onPickPhoto(); }}>
                             <View style={styles.menuItem}>
                                 <MaterialCommunityIcons name="image" size={24} color="#333" />
@@ -333,6 +434,34 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
                     </Animated.View>
                 )}
             </View>
+
+            {/* Global Overlay for regular menu click-out */}
+            {menuVisible && (
+                <TouchableWithoutFeedback onPress={closeMenu}>
+                    <View style={[styles.overlay, { zIndex: 1 }]} />
+                </TouchableWithoutFeedback>
+            )}
+
+            {/* Context Menu Modal/Overlay */}
+            <Modal
+                visible={contextMenuVisible}
+                transparent={true}
+                animationType="none"
+                onRequestClose={closeContextMenu}
+            >
+                <View style={styles.modalContainer}>
+                    {/* The Blur Background */}
+                    <TouchableWithoutFeedback onPress={closeContextMenu}>
+                        <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
+                    </TouchableWithoutFeedback>
+
+                    {/* The Active Item (Cloned) */}
+                    {renderActiveItem()}
+
+                    {/* The Menu */}
+                    {renderContextMenu()}
+                </View>
+            </Modal>
         </View>
     );
 }
@@ -356,19 +485,18 @@ const styles = StyleSheet.create({
         padding: 12,
         alignItems: 'center',
         height: 80,
+        backgroundColor: 'white', // Important for clone
+        marginHorizontal: 16,
+        borderRadius: 12,
     },
     thumbnailContainer: {
         width: 56,
         height: 56,
         borderRadius: 8,
-        // overflow: 'hidden', // Removed to allow shadow to show
         backgroundColor: '#f0f0f0',
         marginRight: 12,
         shadowColor: "#000",
-        shadowOffset: {
-            width: 0,
-            height: 2,
-        },
+        shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.1,
         shadowRadius: 3.84,
         elevation: 5,
@@ -376,7 +504,7 @@ const styles = StyleSheet.create({
     thumbnail: {
         width: '100%',
         height: '100%',
-        borderRadius: 8, // Moved borderRadius here since container overflow is visible
+        borderRadius: 8,
     },
     placeholderThumbnail: {
         width: '100%',
@@ -399,7 +527,6 @@ const styles = StyleSheet.create({
     actionsContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 0,
     },
     viewChip: {
         height: 24,
@@ -422,8 +549,8 @@ const styles = StyleSheet.create({
         margin: 24,
         right: 0,
         bottom: 0,
-        alignItems: 'flex-end', // Ensure items align right
-        zIndex: 10, // Ensure above overlay
+        alignItems: 'flex-end',
+        zIndex: 10,
     },
     fab: {
         backgroundColor: '#000',
@@ -431,25 +558,18 @@ const styles = StyleSheet.create({
     },
     customMenu: {
         backgroundColor: 'white',
-        borderRadius: 24, // Rounder definition
+        borderRadius: 24,
         paddingVertical: 12,
         paddingHorizontal: 16,
-        marginBottom: 0,
-        marginRight: 0,
-        minWidth: 200,
         position: 'absolute',
         bottom: 0,
         right: 0,
-
-        // Shadow
+        minWidth: 200,
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.15,
         shadowRadius: 12,
         elevation: 4,
-
-        // Alignment
-        transformOrigin: 'bottom right', // React Native specific: anchor point for scale
     },
     menuItem: {
         flexDirection: 'row',
@@ -464,59 +584,71 @@ const styles = StyleSheet.create({
     },
     overlay: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'transparent', // Invisible touch target
-        zIndex: 1,
+        backgroundColor: 'transparent',
     },
     headerTitle: {
         fontWeight: 'bold',
         paddingHorizontal: 16,
-        paddingTop: 20, // Increased top padding
+        paddingTop: 20,
         paddingBottom: 10,
         color: '#000',
     },
     divider: {
-        marginLeft: 80, // iOS style separator inset
+        marginLeft: 96, // 80 (original) + 16 (card margin)
+        marginRight: 16, // Match card margin
     },
-    contextOverlay: {
-        ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(0,0,0,0.4)',
-        zIndex: 20, // Higher than everything
-        justifyContent: 'center',
-        alignItems: 'center',
+    // Context Menu Specifics
+    modalContainer: {
+        flex: 1,
+        // justifyContent: 'center',
     },
-    contextMenuContainer: {
-        backgroundColor: 'white',
+    contextMenu: {
+        position: 'absolute',
+        backgroundColor: 'rgba(255, 255, 255, 0.95)',
         borderRadius: 16,
-        width: '80%',
         padding: 16,
-        alignItems: 'center',
-        elevation: 5,
+        overflow: 'hidden',
+        // Shadow for iOS
         shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 3.84,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 12,
+        elevation: 5,
+    },
+    contextMenuItem: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingVertical: 16,
+        paddingHorizontal: 16,
+        backgroundColor: 'white',
+    },
+    contextMenuText: {
+        fontSize: 16,
+        color: '#000',
     },
     contextRow: {
         flexDirection: 'row',
-        justifyContent: 'space-around',
-        width: '100%',
+        justifyContent: 'center',
+        alignItems: 'center',
         marginBottom: 16,
+        gap: 24,
     },
     contextActionItem: {
         alignItems: 'center',
-    },
-    contextRowVertical: {
-        width: '100%',
-        marginTop: 16,
+        justifyContent: 'center',
+        minWidth: 50,
     },
     contextVerticalItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: 8,
-        paddingHorizontal: 16,
+        paddingVertical: 10,
+        paddingTop: 20, // Added 8px extra padding
+        width: '80%',
+        alignSelf: 'center',
     },
     contextVerticalText: {
-        marginLeft: 16,
+        marginLeft: 12,
         fontSize: 16,
         color: '#333',
     }

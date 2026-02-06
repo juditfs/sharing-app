@@ -4,8 +4,8 @@
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "web": "expo start --web",
     "test": "jest"
   },
@@ -14,6 +14,7 @@
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@supabase/supabase-js": "^2.91.0",
     "expo": "~54.0.31",
+    "expo-blur": "~15.0.8",
     "expo-clipboard": "~8.0.8",
     "expo-crypto": "~15.0.8",
     "expo-file-system": "~19.0.21",
