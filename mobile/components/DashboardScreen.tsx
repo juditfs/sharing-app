@@ -310,6 +310,7 @@ const styles = StyleSheet.create({
         right: 0,
         bottom: 0,
         alignItems: 'flex-end', // Ensure items align right
+        zIndex: 10, // Ensure above overlay
     },
     fab: {
         backgroundColor: '#000',
