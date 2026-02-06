@@ -6,7 +6,8 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "test": "jest"
   },
   "dependencies": {
     "@noble/ciphers": "^2.1.1",
@@ -29,9 +30,24 @@
     "react-native-url-polyfill": "^3.0.0"
   },
   "devDependencies": {
+    "@testing-library/react-native": "^13.3.3",
+    "@types/jest": "^30.0.0",
     "@types/node": "^25.0.9",
     "@types/react": "~19.1.0",
+    "babel-preset-expo": "^54.0.10",
+    "jest": "^30.2.0",
+    "jest-expo": "^54.0.17",
     "typescript": "~5.9.2"
+  },
+  "jest": {
+    "preset": "jest-expo",
+    "moduleNameMapper": {
+      "@expo/vector-icons": "<rootDir>/__mocks__/@expo/vector-icons",
+      "expo/src/winter/runtime.native.ts": "<rootDir>/__mocks__/@expo/vector-icons.js"
+    },
+    "setupFiles": [
+      "<rootDir>/jest.setup.js"
+    ]
   },
   "private": true
 }
