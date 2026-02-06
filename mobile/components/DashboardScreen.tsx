@@ -351,7 +351,7 @@ const styles = StyleSheet.create({
     },
     overlay: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(0,0,0,0.05)', // Subtle dim
+        backgroundColor: 'transparent', // Invisible touch target
         zIndex: 1,
     },
     headerTitle: {
