@@ -297,7 +297,8 @@ export default function App() {
               <DashboardScreen
                 onOpenSettings={handleDashboardSettings}
                 onCopyLink={(item: any) => handleCopyLink(item.shareUrl)}
-                onCreateNew={() => setView('upload')}
+                onTakePhoto={handleTakePhoto}
+                onPickPhoto={handlePickPhoto}
               />
             )}
           </View>

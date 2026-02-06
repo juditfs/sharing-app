@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
-import { StyleSheet, View, FlatList, RefreshControl } from 'react-native';
-import { Text, ActivityIndicator, IconButton, Chip, Divider, FAB } from 'react-native-paper';
+import React, { useEffect, useState, useRef } from 'react';
+import { StyleSheet, View, FlatList, RefreshControl, Animated, TouchableWithoutFeedback, Easing } from 'react-native';
+import { Text, ActivityIndicator, IconButton, Chip, Divider, FAB } from 'react-native-paper'; // Removed Menu import
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 
@@ -9,13 +9,52 @@ import { getUserLinks, LinkItem } from '../lib/api';
 interface DashboardScreenProps {
     onOpenSettings: (link: LinkItem) => void;
     onCopyLink: (link: LinkItem) => void;
-    onCreateNew: () => void;
+    onTakePhoto: () => void;
+    onPickPhoto: () => void;
 }
 
-export function DashboardScreen({ onOpenSettings, onCopyLink, onCreateNew }: DashboardScreenProps) {
+export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPickPhoto }: DashboardScreenProps) {
     const [links, setLinks] = useState<LinkItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [menuVisible, setMenuVisible] = useState(false);
+
+    // Animation Values
+    const menuAnim = useRef(new Animated.Value(0)).current;
+    const fabScale = useRef(new Animated.Value(1)).current;
+
+    const openMenu = () => {
+        setMenuVisible(true);
+        Animated.parallel([
+            Animated.timing(menuAnim, {
+                toValue: 1,
+                duration: 200,
+                useNativeDriver: true,
+                easing: Easing.out(Easing.ease),
+            }),
+            Animated.timing(fabScale, {
+                toValue: 0,
+                duration: 150,
+                useNativeDriver: true,
+            })
+        ]).start();
+    };
+
+    const closeMenu = () => {
+        Animated.parallel([
+            Animated.timing(menuAnim, {
+                toValue: 0,
+                duration: 150,
+                useNativeDriver: true,
+                easing: Easing.in(Easing.ease),
+            }),
+            Animated.timing(fabScale, {
+                toValue: 1,
+                duration: 200,
+                useNativeDriver: true,
+            })
+        ]).start(() => setMenuVisible(false));
+    };
 
     const loadLinks = async () => {
         try {
@@ -28,6 +67,8 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onCreateNew }: Das
             setRefreshing(false);
         }
     };
+    // ... existing code ...
+
 
     useEffect(() => {
         loadLinks();
@@ -120,12 +161,65 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onCreateNew }: Das
                 }
             />
 
-            <FAB
-                icon="plus"
-                style={styles.fab}
-                onPress={onCreateNew}
-                label="New Link"
-            />
+            {/* Portal-like effect for custom menu, but kept in layout for simplicity since it's absolute positioned */}
+            {menuVisible && (
+                <TouchableWithoutFeedback onPress={closeMenu}>
+                    <View style={styles.overlay} />
+                </TouchableWithoutFeedback>
+            )}
+
+            <View style={styles.fabContainer}>
+                {/* FAB - Animated Scale Out */}
+                <Animated.View style={{
+                    transform: [{ scale: fabScale }],
+                    opacity: fabScale,
+                    position: 'absolute',
+                    right: 0,
+                    bottom: 0,
+                }}>
+                    <FAB
+                        icon="plus"
+                        color="white"
+                        style={styles.fab}
+                        onPress={openMenu}
+                    />
+                </Animated.View>
+
+                {/* Menu - Animated Scale In from bottom right */}
+                {menuVisible && (
+                    <Animated.View style={[
+                        styles.customMenu,
+                        {
+                            opacity: menuAnim,
+                            transform: [
+                                { scale: menuAnim },
+                                {
+                                    translateY: menuAnim.interpolate({
+                                        inputRange: [0, 1],
+                                        outputRange: [20, 0] // Slide up slightly
+                                    })
+                                }
+                            ]
+                        }
+                    ]}>
+                        <TouchableWithoutFeedback onPress={() => { closeMenu(); onTakePhoto(); }}>
+                            <View style={styles.menuItem}>
+                                <MaterialCommunityIcons name="camera" size={24} color="#333" />
+                                <Text style={styles.menuText}>Take Photo</Text>
+                            </View>
+                        </TouchableWithoutFeedback>
+
+                        {/* No Divider as requested */}
+
+                        <TouchableWithoutFeedback onPress={() => { closeMenu(); onPickPhoto(); }}>
+                            <View style={styles.menuItem}>
+                                <MaterialCommunityIcons name="image" size={24} color="#333" />
+                                <Text style={styles.menuText}>Choose from Library</Text>
+                            </View>
+                        </TouchableWithoutFeedback>
+                    </Animated.View>
+                )}
+            </View>
         </View>
     );
 }
@@ -210,12 +304,54 @@ const styles = StyleSheet.create({
         color: '#888',
         fontSize: 16,
     },
-    fab: {
+    fabContainer: {
         position: 'absolute',
-        margin: 16,
+        margin: 24,
         right: 0,
         bottom: 0,
-        backgroundColor: '#6366F1', // Primary color
+        alignItems: 'flex-end', // Ensure items align right
+    },
+    fab: {
+        backgroundColor: '#000',
+        borderRadius: 50,
+    },
+    customMenu: {
+        backgroundColor: 'white',
+        borderRadius: 24, // Rounder definition
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        marginBottom: 0,
+        marginRight: 0,
+        minWidth: 200,
+        position: 'absolute',
+        bottom: 0,
+        right: 0,
+
+        // Shadow
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 12,
+        elevation: 4,
+
+        // Alignment
+        transformOrigin: 'bottom right', // React Native specific: anchor point for scale
+    },
+    menuItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 12,
+    },
+    menuText: {
+        marginLeft: 12,
+        fontSize: 16,
+        color: '#333',
+        fontWeight: '500',
+    },
+    overlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0,0,0,0.05)', // Subtle dim
+        zIndex: 1,
     },
     headerTitle: {
         fontWeight: 'bold',
