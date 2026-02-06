@@ -154,13 +154,22 @@ const styles = StyleSheet.create({
         width: 56,
         height: 56,
         borderRadius: 8,
-        overflow: 'hidden',
+        // overflow: 'hidden', // Removed to allow shadow to show
         backgroundColor: '#f0f0f0',
         marginRight: 12,
+        shadowColor: "#000",
+        shadowOffset: {
+            width: 0,
+            height: 2,
+        },
+        shadowOpacity: 0.1,
+        shadowRadius: 3.84,
+        elevation: 5,
     },
     thumbnail: {
         width: '100%',
         height: '100%',
+        borderRadius: 8, // Moved borderRadius here since container overflow is visible
     },
     placeholderThumbnail: {
         width: '100%',

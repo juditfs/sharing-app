@@ -40,7 +40,8 @@ jest.mock('expo-image', () => {
 jest.mock('@expo/vector-icons', () => {
     const { View } = require('react-native');
     return {
-        MaterialCommunityIcons: (props: any) => <View {...props} testID="mock-icon" />
+        MaterialCommunityIcons: (props: any) => <View {...props} testID="mock-icon" />,
+        Ionicons: (props: any) => <View {...props} testID="mock-ionicon" />
     };
 });
 
@@ -80,11 +81,16 @@ describe('Sharene App Integration Tests', () => {
         jest.clearAllMocks();
     });
 
+    const waitForUploadScreen = async (utils: ReturnType<typeof render>) => {
+        await utils.findByText('Sharene');
+        await utils.findByText('Choose from Library');
+    };
+
     test('1. Upload from Library flow', async () => {
         const { getByText, findByText } = render(<App />);
 
         // Wait for app to load (Upload screen)
-        await findByText('Sharene');
+        await waitForUploadScreen({ getByText, findByText } as any);
 
         // Press "Choose from Library"
         const libraryButton = getByText('Choose from Library');
@@ -101,7 +107,7 @@ describe('Sharene App Integration Tests', () => {
 
     test('2. Take a photo flow', async () => {
         const { getByText, findByText } = render(<App />);
-        await findByText('Sharene');
+        await waitForUploadScreen({ getByText, findByText } as any);
 
         // Press "Take Photo"
         const cameraButton = getByText('Take Photo');
@@ -116,6 +122,7 @@ describe('Sharene App Integration Tests', () => {
         const { getByText, findByText } = render(<App />);
 
         // Trigger upload first to get to success screen
+        await waitForUploadScreen({ getByText, findByText } as any);
         fireEvent.press(getByText('Choose from Library'));
         await findByText('Link Created!');
 
@@ -129,9 +136,10 @@ describe('Sharene App Integration Tests', () => {
     });
 
     test('5. Change expiration (Edit Settings)', async () => {
-        const { getByText, findByText, getByTestId } = render(<App />);
+        const { getByText, findByText } = render(<App />);
 
         // Trigger upload
+        await waitForUploadScreen({ getByText, findByText } as any);
         fireEvent.press(getByText('Choose from Library'));
         await findByText('Link Created!');
 
@@ -139,12 +147,12 @@ describe('Sharene App Integration Tests', () => {
         fireEvent.press(getByText('Edit Settings'));
 
         // Verify Settings Drawer opens
-        const settingsHeader = await findByText('Link Settings');
+        const settingsHeader = await findByText('Settings');
         expect(settingsHeader).toBeTruthy();
 
-        // Find "Save" button and press it (assuming default settings for now)
+        // Find "Get link" button and press it (assuming default settings for now)
         // We could check changing a segmented button value if we added testID to them
-        const saveButton = getByText('Save Changes');
+        const saveButton = getByText('Get link');
         fireEvent.press(saveButton);
 
         // Verify updateLink API called
@@ -156,6 +164,7 @@ describe('Sharene App Integration Tests', () => {
     test('7. Get new link (Share Another)', async () => {
         const { getByText, findByText } = render(<App />);
 
+        await waitForUploadScreen({ getByText, findByText } as any);
         fireEvent.press(getByText('Choose from Library'));
         await findByText('Link Created!');
 
@@ -169,7 +178,7 @@ describe('Sharene App Integration Tests', () => {
 
     test('Home Logic: Check links on load (Dashboard)', async () => {
         // Mock getUserLinks to return data
-        mockGetUserLinks.mockResolvedValueOnce([
+        mockGetUserLinks.mockResolvedValue([
             {
                 id: '1',
                 short_code: 'DASH12',

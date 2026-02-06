@@ -1,5 +1,8 @@
 import 'react-native-get-random-values';
 
+// Prevent Expo Winter runtime from initializing during Jest
+jest.mock('expo/src/winter/runtime.native', () => ({}));
+
 // Mock the Expo runtime to avoid "import outside scope" errors
 jest.mock('expo', () => {
     const React = require('react');
