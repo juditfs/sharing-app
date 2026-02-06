@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { StyleSheet, View, FlatList, RefreshControl, Animated, TouchableWithoutFeedback, Easing } from 'react-native';
+import { StyleSheet, View, FlatList, RefreshControl, Animated, TouchableWithoutFeedback, Easing, Share, Alert, TouchableOpacity } from 'react-native';
 import { Text, ActivityIndicator, IconButton, Chip, Divider, FAB } from 'react-native-paper'; // Removed Menu import
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 
-import { getUserLinks, LinkItem } from '../lib/api';
+import { getUserLinks, LinkItem, deleteLink } from '../lib/api';
 
 interface DashboardScreenProps {
     onOpenSettings: (link: LinkItem) => void;
@@ -17,7 +17,9 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
     const [links, setLinks] = useState<LinkItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+
     const [menuVisible, setMenuVisible] = useState(false);
+    const [selectedLink, setSelectedLink] = useState<LinkItem | null>(null);
 
     // Animation Values
     const menuAnim = useRef(new Animated.Value(0)).current;
@@ -56,6 +58,45 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
         ]).start(() => setMenuVisible(false));
     };
 
+    const handleDeleteLink = async (link: LinkItem) => {
+        Alert.alert(
+            "Delete Link",
+            "Are you sure you want to delete this link? This action cannot be undone.",
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Delete",
+                    style: "destructive",
+                    onPress: async () => {
+                        try {
+                            setLoading(true);
+                            await deleteLink(link.short_code);
+                            // Optimistic remove or reload
+                            setLinks(current => current.filter(l => l.id !== link.id));
+                            setSelectedLink(null);
+                        } catch (e) {
+                            Alert.alert("Error", "Failed to delete link");
+                        } finally {
+                            setLoading(false);
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
+    const handleShareLink = async (link: LinkItem, url: string) => {
+        try {
+            await Share.share({
+                message: `Check out this link: ${url}`,
+                url: url, // iOS
+            });
+            setSelectedLink(null);
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
     const loadLinks = async () => {
         try {
             const data = await getUserLinks();
@@ -85,7 +126,12 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
             : `https://viewer-rho-seven.vercel.app/p/${item.short_code}`;
 
         return (
-            <View style={styles.itemContainer}>
+            <TouchableOpacity
+                activeOpacity={0.7}
+                onLongPress={() => setSelectedLink(item)}
+                delayLongPress={200}
+                style={styles.itemContainer}
+            >
                 {/* Left: Thumbnail */}
                 <View style={styles.thumbnailContainer}>
                     {item.public_thumbnail_url ? (
@@ -128,7 +174,7 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
                         onPress={() => onOpenSettings(item)}
                     />
                 </View>
-            </View>
+            </TouchableOpacity>
         );
     };
 
@@ -165,6 +211,73 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
             {menuVisible && (
                 <TouchableWithoutFeedback onPress={closeMenu}>
                     <View style={styles.overlay} />
+                </TouchableWithoutFeedback>
+            )}
+
+            {/* Context Menu Overlay */}
+            {selectedLink && (
+                <TouchableWithoutFeedback onPress={() => setSelectedLink(null)}>
+                    <View style={styles.contextOverlay}>
+                        <TouchableWithoutFeedback>
+                            <View style={styles.contextMenuContainer}>
+                                {/* Top Row: Actions */}
+                                <View style={styles.contextRow}>
+                                    <View style={styles.contextActionItem}>
+                                        <IconButton
+                                            icon="content-copy"
+                                            size={24}
+                                            onPress={() => {
+                                                const url = process.env.EXPO_PUBLIC_VIEWER_URL
+                                                    ? `${process.env.EXPO_PUBLIC_VIEWER_URL}/p/${selectedLink.short_code}`
+                                                    : `https://viewer-rho-seven.vercel.app/p/${selectedLink.short_code}`;
+                                                onCopyLink({ ...selectedLink, shareUrl: url } as any);
+                                                setSelectedLink(null);
+                                            }}
+                                        />
+                                        <Text variant="labelSmall">Copy</Text>
+                                    </View>
+                                    <View style={styles.contextActionItem}>
+                                        <IconButton
+                                            icon="share-variant"
+                                            size={24}
+                                            onPress={() => {
+                                                const url = process.env.EXPO_PUBLIC_VIEWER_URL
+                                                    ? `${process.env.EXPO_PUBLIC_VIEWER_URL}/p/${selectedLink.short_code}`
+                                                    : `https://viewer-rho-seven.vercel.app/p/${selectedLink.short_code}`;
+                                                handleShareLink(selectedLink, url);
+                                            }}
+                                        />
+                                        <Text variant="labelSmall">Share</Text>
+                                    </View>
+                                    <View style={styles.contextActionItem}>
+                                        <IconButton
+                                            icon="delete"
+                                            iconColor="red"
+                                            size={24}
+                                            onPress={() => handleDeleteLink(selectedLink)}
+                                        />
+                                        <Text variant="labelSmall" style={{ color: 'red' }}>Delete</Text>
+                                    </View>
+                                </View>
+
+                                <Divider style={{ width: '100%' }} />
+
+                                {/* Bottom Row: Settings */}
+                                <View style={styles.contextRowVertical}>
+                                    <TouchableOpacity
+                                        style={styles.contextVerticalItem}
+                                        onPress={() => {
+                                            onOpenSettings(selectedLink);
+                                            setSelectedLink(null);
+                                        }}
+                                    >
+                                        <MaterialCommunityIcons name="cog" size={24} color="#333" />
+                                        <Text style={styles.contextVerticalText}>Edit Settings</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+                        </TouchableWithoutFeedback>
+                    </View>
                 </TouchableWithoutFeedback>
             )}
 
@@ -363,5 +476,48 @@ const styles = StyleSheet.create({
     },
     divider: {
         marginLeft: 80, // iOS style separator inset
+    },
+    contextOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0,0,0,0.4)',
+        zIndex: 20, // Higher than everything
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    contextMenuContainer: {
+        backgroundColor: 'white',
+        borderRadius: 16,
+        width: '80%',
+        padding: 16,
+        alignItems: 'center',
+        elevation: 5,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 3.84,
+    },
+    contextRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-around',
+        width: '100%',
+        marginBottom: 16,
+    },
+    contextActionItem: {
+        alignItems: 'center',
+    },
+    contextRowVertical: {
+        width: '100%',
+        marginTop: 16,
+    },
+    contextVerticalItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 8,
+        paddingHorizontal: 16,
+    },
+    contextVerticalText: {
+        marginLeft: 16,
+        fontSize: 16,
+        color: '#333',
     }
 });

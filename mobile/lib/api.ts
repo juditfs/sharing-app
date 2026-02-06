@@ -27,6 +27,21 @@ export async function updateLink(
     console.log('Link updated successfully');
 }
 
+/**
+ * Delete a link
+ */
+export async function deleteLink(shortCode: string): Promise<void> {
+    const { error } = await supabase
+        .from('shared_links')
+        .delete()
+        .eq('short_code', shortCode);
+
+    if (error) {
+        console.error('Failed to delete link:', error);
+        throw error;
+    }
+}
+
 export interface LinkItem {
     id: string;
     short_code: string;
