@@ -169,7 +169,18 @@ export async function createShareLink(
 
     if (error) {
         console.error('Edge Function error:', error);
-        console.error('Error details:', JSON.stringify(error, null, 2));
+        if (error instanceof Error && 'context' in error) {
+            try {
+                // @ts-ignore - Supabase error types are not fully exposed
+                const context = (error as any).context;
+                if (context && typeof context.json === 'function') {
+                    const errorBody = await context.json();
+                    console.error('Edge Function Error Body:', JSON.stringify(errorBody, null, 2));
+                }
+            } catch (e) {
+                console.error('Failed to parse error body:', e);
+            }
+        }
         throw error;
     }
 
