@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Alert, TouchableWithoutFeedback } from 'react-native';
+import { StyleSheet, View, Alert, TouchableWithoutFeedback, Modal } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as ImagePicker from 'expo-image-picker';
 import * as Clipboard from 'expo-clipboard';
+import { BlurView } from 'expo-blur';
 import { Provider as PaperProvider, Button, Text, ActivityIndicator, Card, Snackbar } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
@@ -210,20 +211,31 @@ export default function App() {
     );
   }
 
+  // ... existing codes ...
+  // Inside App function, before return
+  const UploadLoadingOverlay = () => (
+    <Modal transparent animationType="fade" visible={loading}>
+      <View style={styles.loadingOverlay}>
+        <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#6366F1" />
+          <Text style={styles.loadingText}>Encrypting & Uploading...</Text>
+        </View>
+      </View>
+    </Modal>
+  );
+
   return (
     <PaperProvider theme={theme}>
       <TouchableWithoutFeedback onPress={dismissToast}>
         <View style={styles.container}>
           <StatusBar style="auto" />
 
+          <UploadLoadingOverlay />
+
           {/* Header Area */}
           <View style={styles.header}>
-            {/* Show Back if:
-                  - We are NOT on Dashboard AND we have links (Dashboard is Home)
-                  - OR We are on Success/Upload but we came from somewhere? 
-                  - Basically if view != current Home.
-                  - If result of logic below is that we shouldn't supply a back button, we show nothing.
-              */}
+            {/* ... rest of header ... */}
             {(view !== 'dashboard' && hasLinks) ? (
               <Button mode="text" icon="arrow-left" onPress={handleBackToHome} compact>
                 Back to Links
@@ -239,32 +251,32 @@ export default function App() {
                 <Text variant="displayMedium" style={styles.title}>Sharene</Text>
                 <Text variant="titleMedium" style={styles.subtitle}>Encrypted Photo Sharing</Text>
 
-                {loading ? (
-                  <ActivityIndicator size="large" />
-                ) : (
-                  <View style={styles.buttonContainer}>
-                    <Button
-                      mode="contained"
-                      icon="camera"
-                      onPress={handleTakePhoto}
-                      disabled={!sessionReady}
-                      style={styles.button}
-                    >
-                      Take Photo
-                    </Button>
-                    <Button
-                      mode="outlined"
-                      icon="image"
-                      onPress={handlePickPhoto}
-                      disabled={!sessionReady}
-                      style={styles.button}
-                    >
-                      Choose from Library
-                    </Button>
-                  </View>
-                )}
+                {/* Removed inline loader in favor of overlay */}
+                <View style={styles.buttonContainer}>
+                  <Button
+                    mode="contained"
+                    icon="camera"
+                    onPress={handleTakePhoto}
+                    disabled={!sessionReady}
+                    style={styles.button}
+                  >
+                    Take Photo
+                  </Button>
+                  <Button
+                    mode="outlined"
+                    icon="image"
+                    onPress={handlePickPhoto}
+                    disabled={!sessionReady}
+                    style={styles.button}
+                  >
+                    Choose from Library
+                  </Button>
+                </View>
               </>
             )}
+
+            {/* ... rest of existing code ... */}
+
 
             {view === 'success' && currentLink && (
               <View style={styles.successContainer}>
@@ -441,5 +453,29 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '600'
+  },
+  loadingOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.3)', // Fallback if blur fails or on older android
+  },
+  loadingContainer: {
+    padding: 24,
+    backgroundColor: 'white',
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  loadingText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
   }
 });
