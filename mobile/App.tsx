@@ -203,6 +203,39 @@ export default function App() {
     setSettingsVisible(true);
   };
 
+  const handleLinkPress = (link: LinkItem) => {
+    setCurrentLink({
+      shortCode: link.short_code,
+      shareUrl: process.env.EXPO_PUBLIC_VIEWER_URL
+        ? `${process.env.EXPO_PUBLIC_VIEWER_URL}/p/${link.short_code}`
+        : `https://viewer-rho-seven.vercel.app/p/${link.short_code}`,
+      thumbnailUri: link.public_thumbnail_url || 'https://via.placeholder.com/150',
+      settings: {
+        expiry: link.expires_at || undefined,
+        shareText: link.share_text,
+        allowDownload: link.allow_download,
+        publicThumbnailUrl: link.public_thumbnail_url || undefined,
+      },
+      availableThumbnailUrl: link.public_thumbnail_url,
+    });
+
+    setEditingLink({
+      shortCode: link.short_code,
+      settings: {
+        expiry: link.expires_at || undefined,
+        shareText: link.share_text,
+        allowDownload: link.allow_download,
+        publicThumbnailUrl: link.public_thumbnail_url || undefined,
+      },
+      availableThumbnailUrl: link.public_thumbnail_url,
+      shareUrl: process.env.EXPO_PUBLIC_VIEWER_URL
+        ? `${process.env.EXPO_PUBLIC_VIEWER_URL}/p/${link.short_code}`
+        : `https://viewer-rho-seven.vercel.app/p/${link.short_code}`
+    });
+
+    setView('success');
+  };
+
   if (initialLoading) {
     return (
       <View style={[styles.container, styles.center]}>
@@ -305,12 +338,16 @@ export default function App() {
               </View>
             )}
 
+
+
+
             {view === 'dashboard' && (
               <DashboardScreen
                 onOpenSettings={handleDashboardSettings}
                 onCopyLink={(item: any) => handleCopyLink(item.shareUrl)}
                 onTakePhoto={handleTakePhoto}
                 onPickPhoto={handlePickPhoto}
+                onLinkPress={handleLinkPress}
               />
             )}
           </View>

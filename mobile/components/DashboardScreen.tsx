@@ -15,9 +15,10 @@ interface DashboardScreenProps {
     onCopyLink: (link: LinkItem) => void;
     onTakePhoto: () => void;
     onPickPhoto: () => void;
+    onLinkPress: (link: LinkItem) => void;
 }
 
-export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPickPhoto }: DashboardScreenProps) {
+export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPickPhoto, onLinkPress }: DashboardScreenProps) {
     const [links, setLinks] = useState<LinkItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -194,6 +195,7 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
                     if (ref) itemRefs.current.set(item.id, ref as unknown as View);
                 }}
                 activeOpacity={0.7}
+                onPress={() => onLinkPress(item)}
                 onLongPress={() => handleLongPress(item, item.id)}
                 delayLongPress={200}
                 style={styles.itemContainer}
