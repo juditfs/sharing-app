@@ -68,12 +68,31 @@ export async function decryptImage(
 
 // Helper functions
 export function bytesToBase64(bytes: Uint8Array): string {
-    let binary = '';
-    const len = bytes.byteLength;
-    for (let i = 0; i < len; i++) {
-        binary += String.fromCharCode(bytes[i]);
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    let base64 = '';
+    let i = 0;
+
+    for (; i + 2 < bytes.length; i += 3) {
+        const triplet = (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
+        base64 += chars[(triplet >> 18) & 0x3f];
+        base64 += chars[(triplet >> 12) & 0x3f];
+        base64 += chars[(triplet >> 6) & 0x3f];
+        base64 += chars[triplet & 0x3f];
     }
-    return btoa(binary);
+
+    if (i < bytes.length) {
+        const remaining = bytes.length - i;
+        const byte1 = bytes[i];
+        const byte2 = remaining > 1 ? bytes[i + 1] : 0;
+        const triplet = (byte1 << 16) | (byte2 << 8);
+
+        base64 += chars[(triplet >> 18) & 0x3f];
+        base64 += chars[(triplet >> 12) & 0x3f];
+        base64 += remaining === 2 ? chars[(triplet >> 6) & 0x3f] : '=';
+        base64 += '=';
+    }
+
+    return base64;
 }
 
 function hexToBytes(hex: string): Uint8Array {

@@ -77,16 +77,14 @@ const EncryptedThumbnail = ({ path, encryptionKey, style }: { path: string, encr
     }
 
     return (
-        <View>
-            <Image source={{ uri: imageUri }} style={style} contentFit="cover" transition={200} />
+        <View style={style}>
+            <Image source={{ uri: imageUri }} style={StyleSheet.absoluteFillObject} contentFit="cover" transition={200} />
             {/* Overlay Lock Icon */}
-            <View style={{
-                position: 'absolute',
-                top: 0, left: 0, right: 0, bottom: 0,
+            <View style={[StyleSheet.absoluteFillObject, {
                 backgroundColor: 'rgba(0,0,0,0.3)',
                 justifyContent: 'center',
                 alignItems: 'center'
-            }}>
+            }]}>
                 <MaterialCommunityIcons name="lock" size={20} color="white" />
             </View>
         </View>
