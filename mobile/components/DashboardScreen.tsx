@@ -4,7 +4,6 @@ import { Text, ActivityIndicator, IconButton, Divider, FAB } from 'react-native-
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { BlurView } from 'expo-blur';
-import * as Clipboard from 'expo-clipboard'; // Fixed import
 
 import { supabase } from '../lib/supabase';
 import { decryptImage, bytesToBase64 } from '../lib/crypto';

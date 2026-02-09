@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { StyleSheet, View, Text, Modal, TouchableOpacity, Switch, ActivityIndicator, Alert, TouchableWithoutFeedback, Animated, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinkSettings } from '../lib/upload';
+import { restorePublicThumbnail } from '../lib/secureImage';
 
 interface SettingsDrawerProps {
     visible: boolean;
@@ -9,13 +10,16 @@ interface SettingsDrawerProps {
     onSave: (newSettings: LinkSettings) => Promise<void>;
     initialSettings: LinkSettings;
     availableThumbnailUrl?: string | null;
+    privateThumbnailPath?: string | null;
+    encryptionKey?: string;
 }
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-export function SettingsDrawer({ visible, onClose, onSave, initialSettings, availableThumbnailUrl }: SettingsDrawerProps) {
+export function SettingsDrawer({ visible, onClose, onSave, initialSettings, availableThumbnailUrl, privateThumbnailPath, encryptionKey }: SettingsDrawerProps) {
     const [settings, setSettings] = useState<LinkSettings>(initialSettings);
     const [saving, setSaving] = useState(false);
+    const [restoring, setRestoring] = useState(false);
     const translateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
 
     // Reset state and animate when opening
@@ -58,12 +62,31 @@ export function SettingsDrawer({ visible, onClose, onSave, initialSettings, avai
         setSettings(prev => ({ ...prev, expiry }));
     };
 
-    const toggleThumbnail = (value: boolean) => {
+    const toggleThumbnail = async (value: boolean) => {
         if (value) {
             if (availableThumbnailUrl) {
                 setSettings(prev => ({ ...prev, publicThumbnailUrl: availableThumbnailUrl }));
             } else if (initialSettings.publicThumbnailUrl) {
                 setSettings(prev => ({ ...prev, publicThumbnailUrl: initialSettings.publicThumbnailUrl }));
+            } else if (privateThumbnailPath && encryptionKey) {
+                // Restore from private thumbnail
+                try {
+                    setRestoring(true);
+                    const newUrl = await restorePublicThumbnail({
+                        path: privateThumbnailPath,
+                        encryptionKey: encryptionKey
+                    });
+
+                    if (newUrl) {
+                        setSettings(prev => ({ ...prev, publicThumbnailUrl: newUrl }));
+                    } else {
+                        Alert.alert('Error', 'Failed to restore thumbnail preview.');
+                    }
+                } catch (e) {
+                    Alert.alert('Error', 'Failed to restore thumbnail preview.');
+                } finally {
+                    setRestoring(false);
+                }
             } else {
                 Alert.alert('Cannot Enable', 'No public thumbnail is available for this link.');
             }
@@ -137,8 +160,9 @@ export function SettingsDrawer({ visible, onClose, onSave, initialSettings, avai
                             <Switch
                                 value={hasThumbnail}
                                 onValueChange={toggleThumbnail}
-                                disabled={!availableThumbnailUrl && !initialSettings.publicThumbnailUrl && !hasThumbnail}
+                                disabled={(!availableThumbnailUrl && !initialSettings.publicThumbnailUrl && !privateThumbnailPath && !hasThumbnail) || restoring}
                             />
+                            {restoring && <ActivityIndicator size="small" style={{ marginLeft: 10 }} />}
                         </View>
 
                         <View style={styles.footer}>

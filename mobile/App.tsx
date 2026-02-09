@@ -15,6 +15,15 @@ import { DashboardScreen } from './components/DashboardScreen';
 import { LinkSettings, updateLink, LinkItem, getUserLinks } from './lib/api';
 import { theme } from './theme';
 
+interface EditingItem {
+  shortCode: string;
+  settings: LinkSettings;
+  availableThumbnailUrl?: string | null;
+  privateThumbnailPath?: string | null;
+  encryptionKey?: string;
+  shareUrl: string;
+}
+
 export default function App() {
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -42,12 +51,7 @@ export default function App() {
   // We can open settings for the "currentLink" OR a link from the dashboard
   // If this is null, we might be editing currentLink (legacy logic) or we need a way to track which link is being edited.
   // Let's store the full link data being edited.
-  const [editingLink, setEditingLink] = useState<{
-    shortCode: string;
-    settings: LinkSettings;
-    availableThumbnailUrl?: string | null;
-    shareUrl: string; // Needed to update state after save
-  } | null>(null);
+  const [editingLink, setEditingLink] = useState<EditingItem | null>(null);
 
 
   useEffect(() => {
@@ -196,6 +200,8 @@ export default function App() {
         publicThumbnailUrl: link.public_thumbnail_url || undefined,
       },
       availableThumbnailUrl: link.public_thumbnail_url,
+      privateThumbnailPath: link.thumbnail_url,
+      encryptionKey: link.encryption_key,
       shareUrl: process.env.EXPO_PUBLIC_VIEWER_URL
         ? `${process.env.EXPO_PUBLIC_VIEWER_URL}/p/${link.short_code}`
         : `https://viewer-rho-seven.vercel.app/p/${link.short_code}`
@@ -228,6 +234,8 @@ export default function App() {
         publicThumbnailUrl: link.public_thumbnail_url || undefined,
       },
       availableThumbnailUrl: link.public_thumbnail_url,
+      privateThumbnailPath: link.thumbnail_url,
+      encryptionKey: link.encryption_key,
       shareUrl: process.env.EXPO_PUBLIC_VIEWER_URL
         ? `${process.env.EXPO_PUBLIC_VIEWER_URL}/p/${link.short_code}`
         : `https://viewer-rho-seven.vercel.app/p/${link.short_code}`
@@ -359,6 +367,8 @@ export default function App() {
               onClose={() => setSettingsVisible(false)}
               initialSettings={editingLink.settings}
               availableThumbnailUrl={editingLink.availableThumbnailUrl}
+              privateThumbnailPath={editingLink.privateThumbnailPath}
+              encryptionKey={editingLink.encryptionKey}
               onSave={async (newSettings: LinkSettings) => {
                 try {
                   // Update backend
