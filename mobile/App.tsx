@@ -271,7 +271,7 @@ export default function App() {
             {/* ... rest of header ... */}
             {(view !== 'dashboard' && hasLinks) ? (
               <Button mode="text" icon="arrow-left" onPress={handleBackToHome} compact>
-                Back to Links
+                Back to Created Links
               </Button>
             ) : null}
 

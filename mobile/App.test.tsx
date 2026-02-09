@@ -193,8 +193,8 @@ describe('Sharene App Integration Tests', () => {
         const { findByText } = render(<App />);
 
         // Should skip Upload screen and go to Dashboard
-        // "Shared Links" is the header title we added
-        const dashboardHeader = await findByText('Shared Links');
+        // "Created Links" is the header title we added
+        const dashboardHeader = await findByText('Created Links');
         expect(dashboardHeader).toBeTruthy();
 
         // Should show the link shortcode from mock

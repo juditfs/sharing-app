@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { StyleSheet, View, FlatList, RefreshControl, Animated, TouchableWithoutFeedback, Easing, Share, Alert, TouchableOpacity, Modal, LayoutRectangle, Dimensions } from 'react-native';
-import { Text, ActivityIndicator, IconButton, Chip, Divider, FAB } from 'react-native-paper';
+import { StyleSheet, View, SectionList, RefreshControl, Animated, TouchableWithoutFeedback, Easing, Share, Alert, TouchableOpacity, Modal, LayoutRectangle, Dimensions } from 'react-native';
+import { Text, ActivityIndicator, IconButton, Divider, FAB } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { BlurView } from 'expo-blur';
@@ -9,6 +9,63 @@ import * as Clipboard from 'expo-clipboard'; // Fixed import
 import { getUserLinks, LinkItem, deleteLink } from '../lib/api';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+type SectionData = {
+    title: string;
+    data: LinkItem[];
+};
+
+const groupLinksByDate = (links: LinkItem[]): SectionData[] => {
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const isSameDay = (d1: Date, d2: Date) =>
+        d1.getFullYear() === d2.getFullYear() &&
+        d1.getMonth() === d2.getMonth() &&
+        d1.getDate() === d2.getDate();
+
+    const sections: SectionData[] = [
+        { title: 'Today', data: [] },
+        { title: 'Yesterday', data: [] },
+        { title: 'This Year', data: [] },
+        // Older years will be dynamic
+    ];
+
+    const olderYears: { [key: string]: LinkItem[] } = {};
+
+    links.forEach(link => {
+        const date = new Date(link.created_at);
+        if (isSameDay(date, today)) {
+            sections[0].data.push(link);
+        } else if (isSameDay(date, yesterday)) {
+            sections[1].data.push(link);
+        } else if (date.getFullYear() === today.getFullYear()) {
+            sections[2].data.push(link);
+        } else {
+            const year = date.getFullYear().toString();
+            if (!olderYears[year]) olderYears[year] = [];
+            olderYears[year].push(link);
+        }
+    });
+
+    // Add older years to sections
+    Object.keys(olderYears).sort((a, b) => Number(b) - Number(a)).forEach(year => {
+        sections.push({ title: year, data: olderYears[year] });
+    });
+
+    // Filter out empty sections
+    return sections.filter(section => section.data.length > 0);
+};
+
+const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const month = date.toLocaleString('en-US', { month: 'short' });
+    const day = date.getDate();
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    return `${month} ${day} ${hours}:${minutes}`;
+};
 
 interface DashboardScreenProps {
     onOpenSettings: (link: LinkItem) => void;
@@ -221,16 +278,16 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
                         /{item.short_code}
                     </Text>
                     <Text variant="bodySmall" style={styles.date}>
-                        {new Date(item.created_at).toLocaleDateString()}
+                        {formatDate(item.created_at)}
                     </Text>
                 </View>
 
                 {/* Right: Actions & Stats */}
                 <View style={styles.actionsContainer}>
-                    <Chip icon="eye" style={styles.viewChip} textStyle={{ fontSize: 10, paddingVertical: 1 }}>
-                        {item.view_count || 0}
-                    </Chip>
-
+                    <MaterialCommunityIcons name="eye-outline" size={14} color="#888" style={{ marginRight: 4 }} />
+                    <Text style={styles.viewCountText}>
+                        {item.view_count || 0} views
+                    </Text>
                 </View>
             </TouchableOpacity>
         );
@@ -282,10 +339,13 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
                 </View>
                 <View style={styles.infoContainer}>
                     <Text variant="titleMedium" style={styles.shortCode}>/{item.short_code}</Text>
-                    <Text variant="bodySmall" style={styles.date}>{new Date(item.created_at).toLocaleDateString()}</Text>
+                    <Text variant="bodySmall" style={styles.date}>{formatDate(item.created_at)}</Text>
                 </View>
                 <View style={styles.actionsContainer}>
-                    <Chip icon="eye" style={styles.viewChip} textStyle={{ fontSize: 10, paddingVertical: 1 }}>{item.view_count || 0}</Chip>
+                    <MaterialCommunityIcons name="eye-outline" size={14} color="#888" style={{ marginRight: 4 }} />
+                    <Text style={styles.viewCountText}>
+                        {item.view_count || 0} views
+                    </Text>
                 </View>
             </Animated.View>
         );
@@ -384,11 +444,14 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
 
     return (
         <View style={styles.container}>
-            <Text variant="displaySmall" style={styles.headerTitle}>Shared Links</Text>
+            <Text variant="displaySmall" style={styles.headerTitle}>Created Links</Text>
 
-            <FlatList
-                data={links}
+            <SectionList
+                sections={groupLinksByDate(links)}
                 renderItem={renderItem}
+                renderSectionHeader={({ section: { title } }) => (
+                    <Text style={styles.sectionHeader}>{title}</Text>
+                )}
                 keyExtractor={(item) => item.id}
                 contentContainerStyle={styles.listContent}
                 refreshControl={
@@ -398,9 +461,10 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
                 ListEmptyComponent={
                     <View style={styles.emptyContainer}>
                         <MaterialCommunityIcons name="image-multiple-outline" size={48} color="#ccc" />
-                        <Text style={styles.emptyText}>No links shared yet</Text>
+                        <Text style={styles.emptyText}>No links created yet</Text>
                     </View>
                 }
+                stickySectionHeadersEnabled={false}
             />
 
             {/*  Floating Action Button (Menu) */}
@@ -536,6 +600,10 @@ const styles = StyleSheet.create({
         backgroundColor: '#f0f0f0',
         marginRight: 4,
     },
+    viewCountText: {
+        fontSize: 12,
+        color: '#888',
+    },
     emptyContainer: {
         alignItems: 'center',
         justifyContent: 'center',
@@ -594,6 +662,14 @@ const styles = StyleSheet.create({
         paddingTop: 20,
         paddingBottom: 10,
         color: '#000',
+    },
+    sectionHeader: {
+        fontSize: 16,
+        fontWeight: '500', // Semibold/Medium
+        color: '#666',
+        marginTop: 24,
+        marginBottom: 8,
+        paddingHorizontal: 16,
     },
     divider: {
         marginLeft: 96, // 80 (original) + 16 (card margin)
