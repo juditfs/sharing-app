@@ -6,9 +6,92 @@ import { Image } from 'expo-image';
 import { BlurView } from 'expo-blur';
 import * as Clipboard from 'expo-clipboard'; // Fixed import
 
+import { supabase } from '../lib/supabase';
+import { decryptImage, bytesToBase64 } from '../lib/crypto';
 import { getUserLinks, LinkItem, deleteLink } from '../lib/api';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+// Component to handle fetching & decrypting private thumbnails
+const EncryptedThumbnail = ({ path, encryptionKey, style }: { path: string, encryptionKey: string, style: any }) => {
+    const [imageUri, setImageUri] = useState<string | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        let isMounted = true;
+
+        const fetchAndDecrypt = async () => {
+            try {
+                // 1. Download encrypted file
+                const { data, error } = await supabase.storage
+                    .from('photos')
+                    .download(path);
+
+                if (error || !data) {
+                    console.error('EncryptedThumbnail: download errored', error);
+                    throw error || new Error('No data');
+                }
+
+                console.log('EncryptedThumbnail: downloaded size', data.size);
+
+                // 2. Convert Blob to Uint8Array
+                const buffer = await new Response(data).arrayBuffer();
+                const encryptedBytes = new Uint8Array(buffer);
+
+                // 3. Decrypt
+                const decryptedBytes = await decryptImage(encryptedBytes, encryptionKey);
+
+                // 4. Convert to Base64
+                const base64 = bytesToBase64(decryptedBytes);
+                const uri = `data:image/jpeg;base64,${base64}`;
+
+                if (isMounted) {
+                    setImageUri(uri);
+                    setLoading(false);
+                }
+            } catch (err) {
+                console.error('Failed to decrypt thumbnail:', err);
+                if (isMounted) setLoading(false);
+            }
+        };
+
+        fetchAndDecrypt();
+
+        return () => { isMounted = false; };
+    }, [path, encryptionKey]);
+
+    if (loading) {
+        return (
+            <View style={[style, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#f0f0f0' }]}>
+                <ActivityIndicator size="small" color="#ccc" />
+            </View>
+        );
+    }
+
+    if (!imageUri) {
+        return (
+            <View style={[style, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#eee' }]}>
+                <MaterialCommunityIcons name="lock" size={24} color="#aaa" />
+            </View>
+        );
+    }
+
+    return (
+        <View>
+            <Image source={{ uri: imageUri }} style={style} contentFit="cover" transition={200} />
+            {/* Overlay Lock Icon */}
+            <View style={{
+                position: 'absolute',
+                top: 0, left: 0, right: 0, bottom: 0,
+                backgroundColor: 'rgba(0,0,0,0.3)',
+                justifyContent: 'center',
+                alignItems: 'center'
+            }}>
+                <MaterialCommunityIcons name="lock" size={20} color="white" />
+            </View>
+        </View>
+    );
+};
 
 type SectionData = {
     title: string;
@@ -265,6 +348,12 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
                             style={styles.thumbnail}
                             contentFit="cover"
                         />
+                    ) : item.thumbnail_url && item.encryption_key ? (
+                        <EncryptedThumbnail
+                            path={item.thumbnail_url}
+                            encryptionKey={item.encryption_key}
+                            style={styles.thumbnail}
+                        />
                     ) : (
                         <View style={styles.placeholderThumbnail}>
                             <MaterialCommunityIcons name="lock" size={24} color="#aaa" />
@@ -330,6 +419,12 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
                             source={{ uri: item.public_thumbnail_url }}
                             style={styles.thumbnail}
                             contentFit="cover"
+                        />
+                    ) : item.thumbnail_url && item.encryption_key ? (
+                        <EncryptedThumbnail
+                            path={item.thumbnail_url}
+                            encryptionKey={item.encryption_key}
+                            style={styles.thumbnail}
                         />
                     ) : (
                         <View style={styles.placeholderThumbnail}>
