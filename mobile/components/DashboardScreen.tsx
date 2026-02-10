@@ -153,9 +153,10 @@ interface DashboardScreenProps {
     onTakePhoto: () => void;
     onPickPhoto: () => void;
     onLinkPress: (link: LinkItem) => void;
+    onRefreshNeeded?: (refreshFn: () => void) => void;
 }
 
-export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPickPhoto, onLinkPress }: DashboardScreenProps) {
+export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPickPhoto, onLinkPress, onRefreshNeeded }: DashboardScreenProps) {
     const [links, setLinks] = useState<LinkItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -316,6 +317,10 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
 
     useEffect(() => {
         loadLinks();
+        // Expose refresh function to parent
+        if (onRefreshNeeded) {
+            onRefreshNeeded(loadLinks);
+        }
     }, []);
 
     const onRefresh = () => {
@@ -341,12 +346,14 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
                 <View style={styles.thumbnailContainer}>
                     {item.public_thumbnail_url ? (
                         <Image
+                            key={`public-${item.id}-${item.public_thumbnail_url}`}
                             source={{ uri: item.public_thumbnail_url }}
                             style={styles.thumbnail}
                             contentFit="cover"
                         />
                     ) : item.thumbnail_url && item.encryption_key ? (
                         <EncryptedThumbnail
+                            key={`encrypted-${item.id}-${item.thumbnail_url}`}
                             path={item.thumbnail_url}
                             encryptionKey={item.encryption_key}
                             style={styles.thumbnail}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, View, Alert, TouchableWithoutFeedback, Modal } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as ImagePicker from 'expo-image-picker';
@@ -52,6 +52,9 @@ export default function App() {
   // If this is null, we might be editing currentLink (legacy logic) or we need a way to track which link is being edited.
   // Let's store the full link data being edited.
   const [editingLink, setEditingLink] = useState<EditingItem | null>(null);
+
+  // Dashboard refresh function
+  const dashboardRefreshRef = useRef<(() => void) | null>(null);
 
 
   useEffect(() => {
@@ -356,6 +359,9 @@ export default function App() {
                 onTakePhoto={handleTakePhoto}
                 onPickPhoto={handlePickPhoto}
                 onLinkPress={handleLinkPress}
+                onRefreshNeeded={(refreshFn) => {
+                  dashboardRefreshRef.current = refreshFn;
+                }}
               />
             )}
           </View>
@@ -395,6 +401,13 @@ export default function App() {
                   } else {
                     setToastMessage('Settings saved');
                     setToastVisible(true);
+                    // Refresh dashboard if we're in dashboard view
+                    // Add delay to ensure DB consistency (transaction commit time)
+                    if (dashboardRefreshRef.current) {
+                      setTimeout(() => {
+                        dashboardRefreshRef.current?.();
+                      }, 500);
+                    }
                   }
 
                 } catch (e) {

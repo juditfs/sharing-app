@@ -2,6 +2,39 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from './supabase';
 import { decryptImage } from './crypto';
 
+/**
+ * React Native-safe base64 decoder (avoids atob which is unreliable in Hermes)
+ * Handles = padding correctly
+ */
+function base64ToBytes(base64: string): Uint8Array {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    const lookup = new Uint8Array(256);
+    for (let i = 0; i < chars.length; i++) {
+        lookup[chars.charCodeAt(i)] = i;
+    }
+
+    const len = base64.length;
+    let padding = 0;
+    if (base64.endsWith('==')) padding = 2;
+    else if (base64.endsWith('=')) padding = 1;
+
+    const bytes = new Uint8Array((len * 3) / 4 - padding);
+    let p = 0;
+
+    for (let i = 0; i < len; i += 4) {
+        const encoded1 = lookup[base64.charCodeAt(i)];
+        const encoded2 = lookup[base64.charCodeAt(i + 1)];
+        const encoded3 = lookup[base64.charCodeAt(i + 2)];
+        const encoded4 = lookup[base64.charCodeAt(i + 3)];
+
+        bytes[p++] = (encoded1 << 2) | (encoded2 >> 4);
+        if (p < bytes.length) bytes[p++] = ((encoded2 & 15) << 4) | (encoded3 >> 2);
+        if (p < bytes.length) bytes[p++] = ((encoded3 & 3) << 6) | encoded4;
+    }
+
+    return bytes;
+}
+
 const THUMBNAIL_CACHE_DIR = `${FileSystem.cacheDirectory}decrypted_thumbnails/`;
 
 /**
@@ -78,28 +111,33 @@ interface RestoreProps {
 export async function restorePublicThumbnail({ path, encryptionKey }: RestoreProps): Promise<string | null> {
     try {
         const fileUri = await getDecryptedThumbnailUri({ path, encryptionKey });
-        if (!fileUri) return null;
+        if (!fileUri) {
+            return null;
+        }
 
         const base64 = await FileSystem.readAsStringAsync(fileUri!, {
             encoding: 'base64'
         });
 
-        const res = await fetch(`data:image/jpeg;base64,${base64}`);
-        const blob = await res.blob();
-
         const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return null;
+        if (!user) {
+            return null;
+        }
 
         const filename = `${user.id}/${Date.now()}_restored.jpg`;
 
+        // Upload Uint8Array directly - React Native-safe, avoids Blob
         const { error: uploadError } = await supabase.storage
             .from('public-thumbnails')
-            .upload(filename, blob, {
+            .upload(filename, base64ToBytes(base64), {
                 contentType: 'image/jpeg',
                 upsert: true
             });
 
-        if (uploadError) return null;
+        if (uploadError) {
+            console.error('Failed to restore thumbnail:', uploadError);
+            return null;
+        }
 
         const { data: { publicUrl } } = supabase.storage
             .from('public-thumbnails')
@@ -107,6 +145,7 @@ export async function restorePublicThumbnail({ path, encryptionKey }: RestorePro
 
         return publicUrl;
     } catch (e) {
+        console.error('Failed to restore thumbnail:', e);
         return null;
     }
 }
