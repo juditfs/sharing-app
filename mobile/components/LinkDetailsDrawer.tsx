@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { StyleSheet, View, Text, Modal, TouchableOpacity, Switch, ActivityIndicator, Alert, TouchableWithoutFeedback, Animated, Dimensions } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import DateTimePickerModal from 'react-native-modal-datetime-picker';
 import { LinkSettings } from '../lib/api';
 import { restorePublicThumbnail } from '../lib/secureImage';
 import { EncryptedThumbnail } from './EncryptedThumbnail';
@@ -122,11 +123,20 @@ export function LinkDetailsDrawer({ visible, onClose, onUpdateSettings, onCopy, 
         }).start(() => onClose());
     };
 
-    const updateExpiry = async (expiry: string) => {
+    const handleConfirmExpiry = async (date: Date) => {
+        setShowEditExpiry(false);
         if (!settings || !link) return;
+
+        // Ensure date is in the future
+        if (date <= new Date()) {
+            Alert.alert('Invalid Time', 'Expiration must be in the future.');
+            return;
+        }
+
+        const expiry = date.toISOString();
         const newSettings = { ...settings, expiry };
         setSettings(newSettings);
-        setShowEditExpiry(false);
+
         try {
             await onUpdateSettings(newSettings);
         } catch (e) {
@@ -279,30 +289,19 @@ export function LinkDetailsDrawer({ visible, onClose, onUpdateSettings, onCopy, 
                                         <Text style={styles.settingTitle}>Expiration</Text>
                                         <Text style={styles.settingSubtitle}>{formatFormattedExpiry(link.createdAt, settings.expiry)}</Text>
                                     </View>
-                                    <TouchableOpacity onPress={() => setShowEditExpiry(!showEditExpiry)}>
+                                    <TouchableOpacity onPress={() => setShowEditExpiry(true)}>
                                         <Text style={styles.editText}>Edit</Text>
                                     </TouchableOpacity>
                                 </View>
 
-                                {showEditExpiry && (
-                                    <View style={styles.segmentContainer}>
-                                        {['10m', '1h', '1d', '1w'].map((opt) => (
-                                            <TouchableOpacity
-                                                key={opt}
-                                                style={[
-                                                    styles.segmentButton,
-                                                    settings.expiry === opt && styles.segmentButtonActive
-                                                ]}
-                                                onPress={() => updateExpiry(opt)}
-                                            >
-                                                <Text style={[
-                                                    styles.segmentText,
-                                                    settings.expiry === opt && styles.segmentTextActive
-                                                ]}>{opt}</Text>
-                                            </TouchableOpacity>
-                                        ))}
-                                    </View>
-                                )}
+                                <DateTimePickerModal
+                                    isVisible={showEditExpiry}
+                                    mode="datetime"
+                                    onConfirm={handleConfirmExpiry}
+                                    onCancel={() => setShowEditExpiry(false)}
+                                    minimumDate={new Date()}
+                                    themeVariant="light"
+                                />
 
                                 <View style={styles.divider} />
 
