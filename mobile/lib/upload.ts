@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import { getSession } from './auth';
 import * as FileSystem from 'expo-file-system/legacy';
+import { bytesToBase64 } from './crypto';
 
 export async function uploadEncryptedImage(
     encryptedPhoto: Uint8Array,
@@ -17,13 +18,16 @@ export async function uploadEncryptedImage(
     const photoPath = `${userId}/${timestamp}_photo.enc`;
     const thumbnailPath = encryptedThumbnail ? `${userId}/${timestamp}_thumb.enc` : null;
 
-    // Upload photo directly from buffer
+    // Save to temp file to avoid React Native fetch Uint8Array OOM/Network errors
+    const tempPhotoUri = FileSystem.cacheDirectory + `${timestamp}_photo.enc`;
+    await FileSystem.writeAsStringAsync(tempPhotoUri, bytesToBase64(encryptedPhoto), { encoding: FileSystem.EncodingType.Base64 });
+
     console.log('Uploading photo to:', photoPath);
     console.log('Photo buffer size:', encryptedPhoto.length);
 
     const { error: photoError } = await supabase.storage
         .from('photos')
-        .upload(photoPath, encryptedPhoto, {
+        .upload(photoPath, { uri: tempPhotoUri, type: 'application/octet-stream', name: 'photo.enc' } as any, {
             contentType: 'application/octet-stream',
             cacheControl: '3600',
             upsert: false,
@@ -36,16 +40,25 @@ export async function uploadEncryptedImage(
 
     console.log('Photo uploaded successfully');
 
-    // Upload thumbnail if exists
+    // Upload thumbnail if exists.
+    // Use raw bytes here (not RN file-object upload) so decrypt payload format remains stable.
     if (encryptedThumbnail && thumbnailPath) {
-        await supabase.storage
+        const { error: thumbError } = await supabase.storage
             .from('photos')
             .upload(thumbnailPath, encryptedThumbnail, {
                 contentType: 'application/octet-stream',
                 cacheControl: '3600',
                 upsert: false,
             });
+
+        if (thumbError) {
+            console.error('Thumbnail upload error:', thumbError);
+            throw new Error(`Thumbnail upload failed: ${thumbError.message}`);
+        }
     }
+
+    // Clean up photo
+    FileSystem.deleteAsync(tempPhotoUri, { idempotent: true }).catch(() => { });
 
     return { photoPath, thumbnailPath };
 }

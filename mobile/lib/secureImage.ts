@@ -37,6 +37,81 @@ function base64ToBytes(base64: string): Uint8Array {
 
 const THUMBNAIL_CACHE_DIR = `${FileSystem.cacheDirectory}decrypted_thumbnails/`;
 
+function normalizePhotosPath(path: string): string {
+    if (path.startsWith('/photos/')) return path.slice('/photos/'.length);
+    if (path.startsWith('photos/')) return path.slice('photos/'.length);
+    if (!path.startsWith('http')) return path;
+    try {
+        const url = new URL(path);
+        const marker = '/storage/v1/object/';
+        const idx = url.pathname.indexOf(marker);
+        if (idx === -1) return path;
+        const after = url.pathname.slice(idx + marker.length); // public/photos/x or sign/photos/x
+        const parts = after.split('/');
+        if (parts.length < 3) return path;
+        // parts: [public|sign, bucket, ...objectPath]
+        return decodeURIComponent(parts.slice(2).join('/'));
+    } catch {
+        return path;
+    }
+}
+
+function getCandidatePhotoPaths(path: string): string[] {
+    const normalized = normalizePhotosPath(path);
+    const variants = [
+        normalized,
+        normalized.startsWith('/photos/') ? normalized.slice('/photos/'.length) : normalized,
+        normalized.startsWith('photos/') ? normalized.slice('photos/'.length) : normalized,
+        normalized.startsWith('/') ? normalized.slice(1) : normalized,
+    ].filter(Boolean);
+    return [...new Set(variants)];
+}
+
+function isLikelyImageBytes(bytes: Uint8Array): boolean {
+    // JPEG
+    if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return true;
+    // PNG
+    if (bytes.length >= 4 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return true;
+    // WEBP: "RIFF....WEBP"
+    if (
+        bytes.length >= 12 &&
+        bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
+        bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50
+    ) return true;
+    return false;
+}
+
+function looksLikeJsonError(bytes: Uint8Array): boolean {
+    if (bytes.length < 2 || bytes[0] !== 0x7b) return false; // '{'
+    try {
+        const probe = new TextDecoder().decode(bytes.slice(0, Math.min(bytes.length, 220)));
+        return probe.includes('"error"') || probe.includes('"statusCode"') || probe.includes('"message"');
+    } catch {
+        return false;
+    }
+}
+
+function getJsonPayloadHint(bytes: Uint8Array): string | null {
+    if (bytes.length < 2 || bytes[0] !== 0x7b) return null; // '{'
+    try {
+        const sample = bytes.slice(0, Math.min(bytes.length, 2000));
+        let text = '';
+        for (let i = 0; i < sample.length; i++) text += String.fromCharCode(sample[i]);
+        const obj = JSON.parse(text);
+        if (obj && typeof obj === 'object') {
+            if ('uri' in obj && 'type' in obj) {
+                return 'stored JSON file descriptor instead of encrypted bytes';
+            }
+            if ('error' in obj || 'message' in obj || 'statusCode' in obj) {
+                return 'storage returned JSON error payload';
+            }
+        }
+        return 'JSON payload';
+    } catch {
+        return null;
+    }
+}
+
 /**
  * Ensures the thumbnail cache directory exists
  */
@@ -58,10 +133,11 @@ interface DecryptProps {
  */
 export async function getDecryptedThumbnailUri({ path, encryptionKey }: DecryptProps): Promise<string | null> {
     try {
+        const candidatePaths = getCandidatePhotoPaths(path);
         await ensureCacheDir();
 
         // The filename in cache is based on the storage path (unique enough)
-        const safeName = path.replace(/\//g, '_');
+        const safeName = candidatePaths[0].replace(/\//g, '_');
         const localUri = `${THUMBNAIL_CACHE_DIR}${safeName}`;
 
         // 1. Check if already in cache
@@ -70,20 +146,56 @@ export async function getDecryptedThumbnailUri({ path, encryptionKey }: DecryptP
             return localUri;
         }
 
-        // 2. Download from storage
-        const { data, error } = await supabase.storage
-            .from('photos')
-            .download(path);
+        // 2. Download from storage (retry across known path formats)
+        let decryptedBytes: Uint8Array | null = null;
+        let lastErr: unknown = null;
 
-        if (error || !data) {
-            console.error('getDecryptedThumbnailUri: download failed', error);
-            return null;
+        for (const candidatePath of candidatePaths) {
+            const { data, error } = await supabase.storage
+                .from('photos')
+                .download(candidatePath);
+
+            if (error || !data) {
+                lastErr = error ?? new Error('No data');
+                continue;
+            }
+
+            const buffer = await new Response(data).arrayBuffer();
+            const encryptedBytes = new Uint8Array(buffer);
+
+            // Some storage failures come back as JSON blobs; treat that as miss and retry variant.
+            if (looksLikeJsonError(encryptedBytes)) {
+                lastErr = new Error('Storage returned JSON error payload');
+                continue;
+            }
+
+            const jsonHint = getJsonPayloadHint(encryptedBytes);
+            if (jsonHint) {
+                lastErr = new Error(`Thumbnail object is not decryptable (${jsonHint})`);
+                continue;
+            }
+
+            try {
+                decryptedBytes = await decryptImage(encryptedBytes, encryptionKey);
+                break;
+            } catch (e) {
+                // Some historical records may contain unencrypted image bytes in thumbnail_url.
+                if (isLikelyImageBytes(encryptedBytes)) {
+                    decryptedBytes = encryptedBytes;
+                    break;
+                }
+                lastErr = e;
+            }
         }
 
-        // 3. Decrypt
-        const buffer = await new Response(data).arrayBuffer();
-        const encryptedBytes = new Uint8Array(buffer);
-        const decryptedBytes = await decryptImage(encryptedBytes, encryptionKey);
+        if (!decryptedBytes) {
+            console.warn('getDecryptedThumbnailUri: unable to fetch/decrypt thumbnail', {
+                path,
+                candidatePaths,
+                error: String(lastErr ?? 'unknown'),
+            });
+            return null;
+        }
 
         // 4. Save to local file system
         const { bytesToBase64 } = require('./crypto');
@@ -95,7 +207,7 @@ export async function getDecryptedThumbnailUri({ path, encryptionKey }: DecryptP
 
         return localUri;
     } catch (e) {
-        console.error('getDecryptedThumbnailUri error:', e);
+        console.warn('getDecryptedThumbnailUri failed:', e);
         return null;
     }
 }
@@ -135,7 +247,7 @@ export async function restorePublicThumbnail({ path, encryptionKey }: RestorePro
             });
 
         if (uploadError) {
-            console.error('Failed to restore thumbnail:', uploadError);
+            console.warn('Failed to restore thumbnail upload:', uploadError);
             return null;
         }
 
@@ -145,7 +257,7 @@ export async function restorePublicThumbnail({ path, encryptionKey }: RestorePro
 
         return publicUrl;
     } catch (e) {
-        console.error('Failed to restore thumbnail:', e);
+        console.warn('Failed to restore thumbnail:', e);
         return null;
     }
 }

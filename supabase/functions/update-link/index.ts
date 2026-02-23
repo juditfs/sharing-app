@@ -68,11 +68,11 @@ serve(async (req) => {
 
         // Handle Expiry
         if (updates.expiry !== undefined) {
-            const validation = validateExpiry(updates.expiry)
-            if (!validation.valid) {
-                return new Response(JSON.stringify({ error: validation.error }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+            const calculated = calculateExpiry(updates.expiry)
+            if (!calculated) {
+                return new Response(JSON.stringify({ error: 'Invalid expiry format' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
             }
-            updateData.expires_at = calculateExpiry(updates.expiry)?.toISOString() || null
+            updateData.expires_at = calculated.toISOString()
         }
 
         // Handle Download
@@ -170,8 +170,9 @@ function calculateExpiry(expiry?: string): Date | null {
         '1y': 365 * 24 * 60 * 60 * 1000,
     }
     if (expiry in expiryMap) return new Date(now.getTime() + expiryMap[expiry])
-    try {
-        const d = new Date(expiry)
-        return isNaN(d.getTime()) ? null : d
-    } catch { return null }
+
+    // Parse as ISO String
+    const d = new Date(expiry)
+    if (isNaN(d.getTime())) return null
+    return d
 }

@@ -48,22 +48,27 @@ export async function decryptImage(
     encryptedData: Uint8Array,
     encryptionKey: string
 ): Promise<Uint8Array> {
-    // Parse structured payload
+    const keyBytes = hexToBytes(encryptionKey);
     const version = encryptedData[0];
 
-    if (version !== ENCRYPTION_VERSION) {
-        throw new Error(`Unsupported encryption version: ${version}`);
+    // Current payload format: [version(1)][iv(12)][ciphertext+tag]
+    if (version === ENCRYPTION_VERSION) {
+        const iv = encryptedData.slice(1, 1 + IV_LENGTH);
+        const ciphertext = encryptedData.slice(1 + IV_LENGTH);
+        const cipher = gcm(keyBytes, iv);
+        return cipher.decrypt(ciphertext);
     }
 
-    const iv = encryptedData.slice(1, 1 + IV_LENGTH);
-    const ciphertext = encryptedData.slice(1 + IV_LENGTH);
-
-    // Decrypt with AES-256-GCM
-    const keyBytes = hexToBytes(encryptionKey);
-    const cipher = gcm(keyBytes, iv);
-    const plaintext = cipher.decrypt(ciphertext);
-
-    return plaintext;
+    // Legacy fallback format (pre-versioning): [iv(12)][ciphertext+tag]
+    // Some previously uploaded files may not include the leading version byte.
+    try {
+        const legacyIv = encryptedData.slice(0, IV_LENGTH);
+        const legacyCiphertext = encryptedData.slice(IV_LENGTH);
+        const legacyCipher = gcm(keyBytes, legacyIv);
+        return legacyCipher.decrypt(legacyCiphertext);
+    } catch {
+        throw new Error(`Unsupported encryption version: ${version}`);
+    }
 }
 
 // Helper functions

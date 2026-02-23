@@ -4,7 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import * as ImagePicker from 'expo-image-picker';
 import * as Clipboard from 'expo-clipboard';
 import { BlurView } from 'expo-blur';
-import { Provider as PaperProvider, Button, Text, ActivityIndicator, Card, Snackbar } from 'react-native-paper';
+import { Provider as PaperProvider, Button, Text, ActivityIndicator, Snackbar } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { Platform } from 'react-native';
@@ -12,19 +12,10 @@ import { getSession, isAnonymousSession, signOut, prepareMigration, completeMigr
 import LoginScreen from './screens/LoginScreen';
 import { handlePhotoError } from './lib/errorHandling';
 import { processAndUploadPhoto } from './lib/photoWorkflow';
-import { SettingsDrawer } from './components/SettingsDrawer';
+import { LinkDetailsDrawer, LinkDetailsData } from './components/LinkDetailsDrawer';
 import { DashboardScreen } from './components/DashboardScreen';
-import { LinkSettings, updateLink, LinkItem, getUserLinks } from './lib/api';
+import { LinkSettings, updateLink, LinkItem, getUserLinks, deleteLink } from './lib/api';
 import { theme } from './theme';
-
-interface EditingItem {
-  shortCode: string;
-  settings: LinkSettings;
-  availableThumbnailUrl?: string | null;
-  privateThumbnailPath?: string | null;
-  encryptionKey?: string;
-  shareUrl: string;
-}
 
 export default function App() {
   const [loading, setLoading] = useState(false);
@@ -42,21 +33,9 @@ export default function App() {
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState('Copied link');
 
-  // State for the currently created link (for Success view)
-  const [currentLink, setCurrentLink] = useState<{
-    shortCode: string;
-    shareUrl: string;
-    thumbnailUri: string;
-    settings: LinkSettings;
-    availableThumbnailUrl?: string | null;
-  } | null>(null);
-
   // Settings Drawer state
   const [settingsVisible, setSettingsVisible] = useState(false);
-  // We can open settings for the "currentLink" OR a link from the dashboard
-  // If this is null, we might be editing currentLink (legacy logic) or we need a way to track which link is being edited.
-  // Let's store the full link data being edited.
-  const [editingLink, setEditingLink] = useState<EditingItem | null>(null);
+  const [editingLink, setEditingLink] = useState<LinkDetailsData | null>(null);
 
   // Dashboard refresh function
   const dashboardRefreshRef = useRef<(() => void) | null>(null);
@@ -117,28 +96,23 @@ export default function App() {
       // Auto-copy to clipboard
       await Clipboard.setStringAsync(uploadResult.shareUrl);
 
-      // Set current link and switch to success view
-      const newLink = {
+      // Switch to dashboard view
+      setHasLinks(true);
+      setView('dashboard');
+
+      // Setup editing state immediately to open drawer
+      setEditingLink({
         shortCode: uploadResult.shortCode,
-        shareUrl: uploadResult.shareUrl,
-        thumbnailUri: uploadResult.thumbnailUri,
         settings: {
           ...defaultSettings,
           publicThumbnailUrl: uploadResult.publicThumbnailUrl
         },
-        availableThumbnailUrl: uploadResult.publicThumbnailUrl
-      };
-      setCurrentLink(newLink);
-      setHasLinks(true); // User now has links!
-      setView('success');
-
-      // Setup editing state immediately in case they click "Edit Settings"
-      setEditingLink({
-        shortCode: newLink.shortCode,
-        settings: newLink.settings,
-        availableThumbnailUrl: newLink.availableThumbnailUrl,
-        shareUrl: newLink.shareUrl
+        availableThumbnailUrl: uploadResult.publicThumbnailUrl,
+        shareUrl: uploadResult.shareUrl,
+        viewCount: 0,
+        createdAt: new Date().toISOString()
       });
+      setSettingsVisible(true);
 
       setToastMessage('Copied link');
       setToastVisible(true);
@@ -200,7 +174,6 @@ export default function App() {
     } else {
       setView('upload');
     }
-    setCurrentLink(null);
     setEditingLink(null);
   };
 
@@ -209,11 +182,11 @@ export default function App() {
   // --- Dashboard Logic ---
   // const openDashboard = () => { setView('dashboard'); }; // Removed as per request
 
-  const handleDashboardSettings = (link: LinkItem) => {
+  const handleOpenLinkDetails = (link: LinkItem) => {
     setEditingLink({
       shortCode: link.short_code,
       settings: {
-        expiry: link.expires_at || undefined, // TODO: Better mapping needed if strict types
+        expiry: link.expires_at || undefined,
         shareText: link.share_text,
         allowDownload: link.allow_download,
         publicThumbnailUrl: link.public_thumbnail_url || undefined,
@@ -221,46 +194,13 @@ export default function App() {
       availableThumbnailUrl: link.public_thumbnail_url,
       privateThumbnailPath: link.thumbnail_url,
       encryptionKey: link.encryption_key,
-      shareUrl: process.env.EXPO_PUBLIC_VIEWER_URL
-        ? `${process.env.EXPO_PUBLIC_VIEWER_URL}/p/${link.short_code}`
-        : `https://viewer-rho-seven.vercel.app/p/${link.short_code}`
-    });
-    setSettingsVisible(true);
-  };
-
-  const handleLinkPress = (link: LinkItem) => {
-    setCurrentLink({
-      shortCode: link.short_code,
       shareUrl: process.env.EXPO_PUBLIC_VIEWER_URL
         ? `${process.env.EXPO_PUBLIC_VIEWER_URL}/p/${link.short_code}`
         : `https://viewer-rho-seven.vercel.app/p/${link.short_code}`,
-      thumbnailUri: link.public_thumbnail_url || 'https://via.placeholder.com/150',
-      settings: {
-        expiry: link.expires_at || undefined,
-        shareText: link.share_text,
-        allowDownload: link.allow_download,
-        publicThumbnailUrl: link.public_thumbnail_url || undefined,
-      },
-      availableThumbnailUrl: link.public_thumbnail_url,
+      viewCount: link.view_count,
+      createdAt: link.created_at
     });
-
-    setEditingLink({
-      shortCode: link.short_code,
-      settings: {
-        expiry: link.expires_at || undefined,
-        shareText: link.share_text,
-        allowDownload: link.allow_download,
-        publicThumbnailUrl: link.public_thumbnail_url || undefined,
-      },
-      availableThumbnailUrl: link.public_thumbnail_url,
-      privateThumbnailPath: link.thumbnail_url,
-      encryptionKey: link.encryption_key,
-      shareUrl: process.env.EXPO_PUBLIC_VIEWER_URL
-        ? `${process.env.EXPO_PUBLIC_VIEWER_URL}/p/${link.short_code}`
-        : `https://viewer-rho-seven.vercel.app/p/${link.short_code}`
-    });
-
-    setView('success');
+    setSettingsVisible(true);
   };
 
   const handleSignedIn = async () => {
@@ -427,43 +367,17 @@ export default function App() {
             {/* ... rest of existing code ... */}
 
 
-            {view === 'success' && currentLink && (
-              <View style={styles.successContainer}>
-                <Text variant="headlineMedium" style={styles.successTitle}>Link Created!</Text>
-
-                <Card style={styles.card}>
-                  <Card.Cover source={{ uri: currentLink.thumbnailUri }} />
-                  <Card.Content>
-                    <Text variant="bodyMedium" style={styles.linkText} numberOfLines={1}>
-                      {currentLink.shareUrl}
-                    </Text>
-                  </Card.Content>
-                  <Card.Actions style={styles.cardActions}>
-                    <Button onPress={() => handleCopyLink(currentLink.shareUrl)}>Copy Link</Button>
-                    <Button onPress={() => setSettingsVisible(true)}>Edit Settings</Button>
-                  </Card.Actions>
-                </Card>
-
-                <Button
-                  mode="contained"
-                  onPress={() => setView('upload')}
-                  style={styles.createNewButton}
-                >
-                  Share Another
-                </Button>
-              </View>
-            )}
 
 
 
 
             {view === 'dashboard' && (
               <DashboardScreen
-                onOpenSettings={handleDashboardSettings}
+                onOpenSettings={handleOpenLinkDetails}
                 onCopyLink={(item: any) => handleCopyLink(item.shareUrl)}
                 onTakePhoto={handleTakePhoto}
                 onPickPhoto={handlePickPhoto}
-                onLinkPress={handleLinkPress}
+                onLinkPress={handleOpenLinkDetails}
                 onRefreshNeeded={(refreshFn) => {
                   dashboardRefreshRef.current = refreshFn;
                 }}
@@ -471,53 +385,38 @@ export default function App() {
             )}
           </View>
 
-          {/* Shared Settings Drawer */}
+          {/* Shared Link Details Drawer */}
           {editingLink && (
-            <SettingsDrawer
+            <LinkDetailsDrawer
               visible={settingsVisible}
               onClose={() => setSettingsVisible(false)}
-              initialSettings={editingLink.settings}
-              availableThumbnailUrl={editingLink.availableThumbnailUrl}
-              privateThumbnailPath={editingLink.privateThumbnailPath}
-              encryptionKey={editingLink.encryptionKey}
-              onSave={async (newSettings: LinkSettings) => {
+              link={editingLink}
+              onCopy={handleCopyLink}
+              onDelete={async () => {
                 try {
-                  // Update backend
-                  await updateLink(editingLink.shortCode, newSettings);
-
-                  // Update editing link state to reflect cache bust if needed, 
-                  // though for dashboard list we rely on refresh.
-                  // For success view, we update currentLink to reflected changes immediately.
-
-                  if (view === 'success') {
-                    const randomTag = Math.random().toString(36).substring(2, 5);
-                    const baseUrl = currentLink!.shareUrl.split('?')[0];
-                    const newShareUrl = `${baseUrl}?v=${randomTag}`;
-
-                    setCurrentLink(prev => prev ? ({
-                      ...prev,
-                      settings: newSettings,
-                      shareUrl: newShareUrl
-                    }) : null);
-
-                    await Clipboard.setStringAsync(newShareUrl);
-                    setToastMessage('Link updated & copied');
-                    setToastVisible(true);
-                  } else {
-                    setToastMessage('Settings saved');
-                    setToastVisible(true);
-                    // Refresh dashboard if we're in dashboard view
-                    // Add delay to ensure DB consistency (transaction commit time)
-                    if (dashboardRefreshRef.current) {
-                      setTimeout(() => {
-                        dashboardRefreshRef.current?.();
-                      }, 500);
-                    }
+                  await deleteLink(editingLink.shortCode);
+                  setSettingsVisible(false);
+                  if (dashboardRefreshRef.current) {
+                    setTimeout(() => {
+                      dashboardRefreshRef.current?.();
+                    }, 500);
                   }
-
                 } catch (e) {
-                  console.error('Failed to save settings:', e);
-                  Alert.alert('Error', 'Failed to save settings. Please try again.');
+                  // Error handled in drawer possibly, or we can just console.error
+                  console.error('Delete failed:', e);
+                  throw e;
+                }
+              }}
+              onUpdateSettings={async (newSettings: LinkSettings) => {
+                await updateLink(editingLink.shortCode, newSettings);
+                // Update local editingLink state so UI refreshes without closing
+                setEditingLink(prev => prev ? { ...prev, settings: newSettings } : null);
+
+                // Refresh dashboard quietly
+                if (dashboardRefreshRef.current) {
+                  setTimeout(() => {
+                    dashboardRefreshRef.current?.();
+                  }, 500);
                 }
               }}
             />

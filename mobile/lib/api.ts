@@ -12,7 +12,7 @@ export async function updateLink(
 ): Promise<void> {
     console.log('Updating link:', shortCode, updates);
 
-    const { error } = await supabase.functions.invoke('update-link', {
+    const { error, data } = await supabase.functions.invoke('update-link', {
         body: {
             shortCode,
             updates
@@ -20,11 +20,22 @@ export async function updateLink(
     });
 
     if (error) {
-        console.error('Failed to update link:', error);
+        console.error('Failed to update link [Object]:', JSON.stringify(error, null, 2));
+        if (error instanceof Error && 'context' in error) {
+            try {
+                const context = (error as any).context;
+                if (context && typeof context.json === 'function') {
+                    const errorBody = await context.json();
+                    console.error('Edge Function Error Body:', JSON.stringify(errorBody, null, 2));
+                }
+            } catch (e) {
+                console.error('Failed to parse error body:', e);
+            }
+        }
         throw error;
     }
 
-    console.log('Link updated successfully');
+    console.log('Link updated successfully', data);
 }
 
 /**

@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Video Generation Models | Best AI Tools Directory</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <div class="logo">
+                <svg class="logo-icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="40" height="40" rx="8" fill="url(#gradient)"/>
+                    <path d="M12 20L18 14L24 20L30 14" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M12 26L18 20L24 26L30 20" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.6"/>
+                    <defs>
+                        <linearGradient id="gradient" x1="0" y1="0" x2="40" y2="40">
+                            <stop stop-color="#8B5CF6"/>
+                            <stop offset="1" stop-color="#EC4899"/>
+                        </linearGradient>
+                    </defs>
+                </svg>
+                <span>AI Video Directory</span>
+            </div>
+            <nav class="nav">
+                <a href="#featured">Featured</a>
+                <a href="#all-tools">All Tools</a>
+                <a href="#categories">Categories</a>
+                <a href="#about">About</a>
+            </nav>
+            <button class="mobile-menu-btn" id="mobileMenuBtn">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+        </div>
+    </header>
+
+    <main>
+        <section class="hero">
+            <div class="container">
+                <div class="hero-content">
+                    <h1>Discover the Best <span class="gradient-text">AI Video Generation</span> Models</h1>
+                    <p class="hero-subtitle">Explore and compare the top AI-powered video generation tools transforming content creation in 2026</p>
+                    <div class="hero-stats">
+                        <div class="stat">
+                            <span class="stat-number">25+</span>
+                            <span class="stat-label">Tools Listed</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-number">12</span>
+                            <span class="stat-label">Categories</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-number">Updated</span>
+                            <span class="stat-label">Feb 2026</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="hero-visual">
+                    <div class="floating-cards">
+                        <div class="float-card card-1">
+                            <div class="card-icon">🎬</div>
+                            <span>Runway</span>
+                        </div>
+                        <div class="float-card card-2">
+                            <div class="card-icon">✨</div>
+                            <span>Pika</span>
+                        </div>
+                        <div class="float-card card-3">
+                            <div class="card-icon">🌊</div>
+                            <span>Luma</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="search-section">
+            <div class="container">
+                <div class="search-box">
+                    <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"/>
+                        <path d="M21 21l-4.35-4.35"/>
+                    </svg>
+                    <input type="text" id="searchInput" placeholder="Search AI video tools...">
+                </div>
+                <div class="filter-tags">
+                    <button class="filter-tag active" data-filter="all">All</button>
+                    <button class="filter-tag" data-filter="text-to-video">Text to Video</button>
+                    <button class="filter-tag" data-filter="image-to-video">Image to Video</button>
+                    <button class="filter-tag" data-filter="video-editing">Video Editing</button>
+                    <button class="filter-tag" data-filter="animation">Animation</button>
+                </div>
+            </div>
+        </section>
+
+        <section id="featured" class="featured-section">
+            <div class="container">
+                <h2 class="section-title">Featured Tools</h2>
+                <div class="featured-grid" id="featuredGrid">
+                    <!-- Featured tools will be injected by JavaScript -->
+                </div>
+            </div>
+        </section>
+
+        <section id="all-tools" class="tools-section">
+            <div class="container">
+                <div class="section-header">
+                    <h2 class="section-title">All AI Video Tools</h2>
+                    <div class="sort-options">
+                        <label>Sort by:</label>
+                        <select id="sortSelect">
+                            <option value="name">Name</option>
+                            <option value="popular</option>
+                           ity">Popularity <option value="rating">Rating</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="tools-grid" id="toolsGrid">
+                    <!-- All tools will be injected by JavaScript -->
+                </div>
+            </div>
+        </section>
+
+        <section id="categories" class="categories-section">
+            <div class="container">
+                <h2 class="section-title">Browse by Category</h2>
+                <div class="categories-grid">
+                    <a href="#" class="category-card" data-category="text-to-video">
+                        <div class="category-icon">📝</div>
+                        <h3>Text to Video</h3>
+                        <p>Generate videos from text descriptions</p>
+                        <span class="tool-count">8 tools</span>
+                    </a>
+                    <a href="#" class="category-card" data-category="image-to-video">
+                        <div class="category-icon">🖼️</div>
+                        <h3>Image to Video</h3>
+                        <p>Animate static images into motion</p>
+                        <span class="tool-count">6 tools</span>
+                    </a>
+                    <a href="#" class="category-card" data-category="video-editing">
+                        <div class="category-icon">✂️</div>
+                        <h3>AI Video Editing</h3>
+                        <p>Edit and enhance video with AI</p>
+                        <span class="tool-count">5 tools</span>
+                    </a>
+                    <a href="#" class="category-card" data-category="animation">
+                        <div class="category-icon">🎨</div>
+                        <h3>Animation</h3>
+                        <p>Create animated content</p>
+                        <span class="tool-count">4 tools</span>
+                    </a>
+                    <a href="#" class="category-card" data-category="3d-generation">
+                        <div class="category-icon">🎲</div>
+                        <h3>3D Generation</h3>
+                        <p>Generate 3D models and videos</p>
+                        <span class="tool-count">3 tools</span>
+                    </a>
+                    <a href="#" class="category-card" data-category="video-enhancement">
+                        <div class="category-icon">✨</div>
+                        <h3>Video Enhancement</h3>
+                        <p>Upscale and improve quality</p>
+                        <span class="tool-count">4 tools</span>
+                    </a>
+                </div>
+            </div>
+        </section>
+
+        <section class="comparison-section">
+            <div class="container">
+                <h2 class="section-title">Top Picks Comparison</h2>
+                <div class="comparison-table-wrapper">
+                    <table class="comparison-table">
+                        <thead>
+                            <tr>
+                                <th>Tool</th>
+                                <th>Best For</th>
+                                <th>Quality</th>
+                                <th>Speed</th>
+                                <th>Free Tier</th>
+                                <th>Starting Price</th>
+                            </tr>
+                        </thead>
+                        <tbody id="comparisonBody">
+                            <!-- Comparison data will be injected by JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <section id="about" class="about-section">
+            <div class="container">
+                <div class="about-content">
+                    <h2>About This Directory</h2>
+                    <p>This curated directory features the most powerful and innovative AI video generation models available in 2026. We regularly update our listings to ensure you have access to the latest tools and technologies shaping the future of video content creation.</p>
+                    <div class="about-features">
+                        <div class="about-feature">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M9 12l2 2 4-4"/>
+                                <circle cx="12" cy="12" r="10"/>
+                            </svg>
+                            <span>Verified Information</span>
+                        </div>
+                        <div class="about-feature">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M9 12l2 2 4-4"/>
+                                <circle cx="12" cy="12" r="10"/>
+                            </svg>
+                            <span>Regular Updates</span>
+                        </div>
+                        <div class="about-feature">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M9 12l2 2 4-4"/>
+                                <circle cx="12" cy="12" r="10"/>
+                            </svg>
+                            <span>Unbiased Reviews</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <div class="logo">
+                        <svg class="logo-icon" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <rect width="40" height="40" rx="8" fill="url(#gradient2)"/>
+                            <path d="M12 20L18 14L24 20L30 14" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M12 26L18 20L24 26L30 20" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.6"/>
+                            <defs>
+                                <linearGradient id="gradient2" x1="0" y1="0" x2="40" y2="40">
+                                    <stop stop-color="#8B5CF6"/>
+                                    <stop offset="1" stop-color="#EC4899"/>
+                                </linearGradient>
+                            </defs>
+                        </svg>
+                        <span>AI Video Directory</span>
+                    </div>
+                    <p>Your guide to the best AI video generation tools</p>
+                </div>
+                <div class="footer-links">
+                    <h4>Quick Links</h4>
+                    <a href="#featured">Featured</a>
+                    <a href="#all-tools">All Tools</a>
+                    <a href="#categories">Categories</a>
+                </div>
+                <div class="footer-links">
+                    <h4>Categories</h4>
+                    <a href="#">Text to Video</a>
+                    <a href="#">Image to Video</a>
+                    <a href="#">Video Editing</a>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>© 2026 AI Video Directory. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>
