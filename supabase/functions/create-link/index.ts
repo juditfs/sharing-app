@@ -72,6 +72,31 @@ serve(async (req) => {
 
         console.log('User authenticated:', user.id)
 
+        // Rate limit: max 50 links per user per 24 hours
+        // Fail-closed: if count query fails, deny the request (prevents fail-open bypass)
+        const DAILY_LINK_LIMIT = 50;
+        const since = new Date(Date.now() - 86_400_000).toISOString();
+        const { count: linkCount, error: countError } = await supabaseAdmin
+            .from('shared_links')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', user.id)
+            .gte('created_at', since);
+
+        if (countError) {
+            console.error('Rate limit count query failed:', countError)
+            return new Response(
+                JSON.stringify({ error: 'Service temporarily unavailable. Please try again.' }),
+                { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
+
+        if ((linkCount ?? 0) >= DAILY_LINK_LIMIT) {
+            return new Response(
+                JSON.stringify({ error: 'Daily link limit reached. Please try again tomorrow.' }),
+                { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
+
         // Parse request body safely
         let body: CreateLinkRequest;
         try {
@@ -113,6 +138,24 @@ serve(async (req) => {
                     { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
                 )
             }
+        }
+
+        // Validate photoUrl path belongs to authenticated user
+        if (!photoUrl.startsWith(`${user.id}/`)) {
+            console.error('Invalid photoUrl - does not belong to user:', photoUrl);
+            return new Response(
+                JSON.stringify({ error: 'Invalid photoUrl: must belong to authenticated user' }),
+                { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
+
+        // Validate thumbnailUrl path belongs to authenticated user (if provided)
+        if (thumbnailUrl && !thumbnailUrl.startsWith(`${user.id}/`)) {
+            console.error('Invalid thumbnailUrl - does not belong to user:', thumbnailUrl);
+            return new Response(
+                JSON.stringify({ error: 'Invalid thumbnailUrl: must belong to authenticated user' }),
+                { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
         }
 
         // Calculate expiry timestamp

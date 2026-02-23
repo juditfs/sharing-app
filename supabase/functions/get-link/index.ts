@@ -9,6 +9,44 @@ const corsHeaders = {
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// --- In-memory rate limiter ---
+// Resets on cold start; acceptable at current scale.
+// Upgrade to Redis-backed for production at scale.
+//
+// IP source: x-forwarded-for is set by Supabase's infrastructure/edge layer,
+// not by the client directly, so header spoofing is mitigated by the platform.
+const IP_LIMIT_PER_MIN = 30;        // max requests per IP per minute
+const CODE_IP_LIMIT_PER_MIN = 5;    // max requests per IP+shortCode per minute
+const WINDOW_MS = 60_000;
+const requestLog = new Map<string, number[]>();
+
+function isRateLimited(key: string, max: number): boolean {
+    const now = Date.now();
+    const hits = (requestLog.get(key) ?? []).filter(t => now - t < WINDOW_MS);
+    hits.push(now);
+    if (hits.length > 0) {
+        requestLog.set(key, hits);
+    } else {
+        requestLog.delete(key);
+    }
+    return hits.length > max;
+}
+
+// Sweep all stale keys every minute to bound memory growth under spray traffic.
+// Runs asynchronously; no await needed.
+let lastSweep = Date.now();
+function maybeSweep() {
+    const now = Date.now();
+    if (now - lastSweep < WINDOW_MS) return;
+    lastSweep = now;
+    for (const [k, times] of requestLog) {
+        const recent = times.filter(t => now - t < WINDOW_MS);
+        if (recent.length === 0) requestLog.delete(k);
+        else requestLog.set(k, recent);
+    }
+}
+// ---------------------------------
+
 type ActionType = 'metadata' | 'key'
 
 interface GetLinkRequest {
@@ -37,10 +75,16 @@ serve(async (req) => {
         return new Response('ok', { headers: corsHeaders })
     }
 
-    // TODO (MVP): Add rate limiting to prevent brute force attacks
-    // Recommended: 10 requests/minute per IP using Supabase built-in rate limiting
-    // For prototype (localhost only), this is acceptable risk
-    // Risk: Brute force enumeration of short codes, DoS attacks
+    // Rate limiting — runs before any DB work
+    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+    maybeSweep();
+    if (isRateLimited(`ip:${ip}`, IP_LIMIT_PER_MIN)) {
+        return new Response(
+            JSON.stringify({ error: 'Too many requests' }),
+            { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+    }
+
 
     try {
         // Initialize Supabase client with Service Role key (for bypassing RLS)
@@ -63,6 +107,14 @@ serve(async (req) => {
             return new Response(
                 JSON.stringify({ error: 'Missing required parameters: shortCode, action' }),
                 { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            )
+        }
+
+        // Per shortCode+IP rate limit — catches targeted enumeration
+        if (isRateLimited(`code:${shortCode}:${ip}`, CODE_IP_LIMIT_PER_MIN)) {
+            return new Response(
+                JSON.stringify({ error: 'Too many requests' }),
+                { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             )
         }
 

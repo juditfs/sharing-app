@@ -7,7 +7,9 @@ import { BlurView } from 'expo-blur';
 import { Provider as PaperProvider, Button, Text, ActivityIndicator, Card, Snackbar } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-import { signInAnonymously } from './lib/auth';
+import { Platform } from 'react-native';
+import { getSession, isAnonymousSession, signOut, prepareMigration, completeMigration } from './lib/auth';
+import LoginScreen from './screens/LoginScreen';
 import { handlePhotoError } from './lib/errorHandling';
 import { processAndUploadPhoto } from './lib/photoWorkflow';
 import { SettingsDrawer } from './components/SettingsDrawer';
@@ -28,6 +30,9 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [sessionReady, setSessionReady] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
+  const [isAnon, setIsAnon] = useState(false);
+  const [migrationCode, setMigrationCode] = useState<string | null>(null);
   const [view, setView] = useState<'upload' | 'success' | 'dashboard'>('upload');
 
   // Navigation state helper
@@ -60,9 +65,20 @@ export default function App() {
   useEffect(() => {
     const init = async () => {
       try {
-        await signInAnonymously();
+        // Check for an existing session first
+        let session = await getSession();
+
+        if (!session) {
+          // No session — show login screen
+          setShowLogin(true);
+          setInitialLoading(false);
+          return;
+        }
+
+        const anon = isAnonymousSession(session);
+        setIsAnon(anon);
         setSessionReady(true);
-        console.log('Anonymous sign-in successful');
+        console.log('Session ready, anonymous:', anon);
 
         // Check for existing links to determine home screen
         const links = await getUserLinks();
@@ -247,6 +263,81 @@ export default function App() {
     setView('success');
   };
 
+  const handleSignedIn = async () => {
+    setShowLogin(false);
+    setInitialLoading(true);
+    try {
+      const session = await getSession();
+
+      // If we have a pending migration, complete it now that we are signed in
+      if (migrationCode) {
+        try {
+          await completeMigration(migrationCode);
+          Alert.alert('Success', 'Your links have been backed up!');
+          setMigrationCode(null);
+        } catch (migErr: any) {
+          console.error('Migration completion failed:', migErr);
+          Alert.alert(
+            'Backup Failed',
+            'You are signed in, but your links couldn\'t be moved. Sign out and try "Back up with Apple" again to retry.',
+          );
+          // Keep migrationCode: user is now authenticated (non-anon), so they can't
+          // call prepare_migration() again. However clearing it was incorrect —
+          // the code may still be valid (e.g. transient network error). Retain it
+          // so a future sign-in attempt (after sign-out + re-backup) can retry.
+          // The DB code expires in 5 min, so stale codes will fail gracefully.
+        }
+      }
+
+      const anon = isAnonymousSession(session);
+      setIsAnon(anon);
+      setSessionReady(true);
+      const links = await getUserLinks();
+      if (links.length > 0) {
+        setHasLinks(true);
+        setView('dashboard');
+      } else {
+        setHasLinks(false);
+        setView('upload');
+      }
+    } catch (err) {
+      console.error('Post-login init failed:', err);
+    } finally {
+      setInitialLoading(false);
+    }
+  };
+
+  const handleBackUpLinks = async () => {
+    try {
+      setLoading(true);
+      // Step 1: Prepare migration while still anonymous
+      const code = await prepareMigration();
+      setMigrationCode(code);
+
+      // Step 2: Show login screen to authenticate (completes in handleSignedIn)
+      setShowLogin(true);
+    } catch (err: any) {
+      Alert.alert('Error', err?.message ?? 'Could not start backup. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      setSessionReady(false);
+      setIsAnon(false);
+      setShowLogin(true);
+    } catch (err: any) {
+      Alert.alert('Error', err?.message ?? 'Sign out failed.');
+    }
+  };
+
+  if (showLogin) {
+    return <LoginScreen onSignedIn={handleSignedIn} />;
+  }
+
   if (initialLoading) {
     return (
       <View style={[styles.container, styles.center]}>
@@ -287,7 +378,21 @@ export default function App() {
             ) : null}
 
             <View style={{ flex: 1 }} />
+
+            <Button mode="text" onPress={handleSignOut} compact>
+              Sign Out
+            </Button>
           </View>
+
+          {/* Migration nudge: shown for anonymous users on iOS */}
+          {isAnon && Platform.OS === 'ios' && (
+            <View style={styles.nudgeBanner}>
+              <Text style={styles.nudgeText}>Your links are stored on this device only.</Text>
+              <Button mode="text" compact onPress={handleBackUpLinks} style={styles.nudgeButton}>
+                Back up with Apple
+              </Button>
+            </View>
+          )}
 
           <View style={[styles.content, view !== 'dashboard' && { justifyContent: 'center' }]}>
             {view === 'upload' && (
@@ -537,5 +642,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#333',
-  }
+  },
+  nudgeBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F0F0FF',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+  },
+  nudgeText: {
+    fontSize: 12,
+    color: '#555',
+    flex: 1,
+  },
+  nudgeButton: {
+    marginLeft: 8,
+  },
 });

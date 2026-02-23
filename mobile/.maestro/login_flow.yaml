@@ -1,0 +1,47 @@
+ appId: host.exp.exponent
+---
+# This test verifies the Email Login Flow UI up to the code entry screen.
+# Note: It does NOT submit a real OTP to avoid email rate limits.
+
+- openLink: exp://127.0.0.1:8081 # Open the app in Expo Go
+
+# Wait for Expo Go to bundle by matching ANY possible screen state we might be left in
+- extendedWaitUntil:
+    visible: ".*(Welcome to Sharene|Enter an email|Check your email|Created Links|Encrypted Photo Sharing).*"
+    timeout: 30000
+
+# 1. If we are stuck halfway through the login flow, back out to Welcome
+- runFlow:
+    when:
+      visible: "← Back"
+    commands:
+      - tapOn: "← Back"
+- runFlow:
+    when:
+      visible: "← Back"
+    commands:
+      - tapOn: "← Back"
+
+# 2. If we are fully signed in, Sign Out
+- runFlow:
+    when:
+      visible: "Sign Out"
+    commands:
+      - tapOn: "Sign Out"
+
+
+# 1. Welcome Screen
+- assertVisible: "Welcome to Sharene"
+- tapOn: "Get Started"
+
+# 2. Email Entry Screen
+- assertVisible: "Enter an email to get started!"
+- tapOn: "Your Email"
+- inputText: "maestro-test@example.com"
+- tapOn: "Continue"
+
+# 3. Code Entry Screen Verification
+- assertVisible: "Check your email"
+- assertVisible: ".*Enter the 6-digit code sent to maestro-test@example.com.*"
+- assertVisible: "Verify"
+- assertVisible: "Resend code.*" 

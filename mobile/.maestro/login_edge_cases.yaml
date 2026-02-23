@@ -1,0 +1,65 @@
+appId: host.exp.exponent
+---
+# This test verifies login edge cases: invalid email format, invalid OTP code, and the 60s OTP rate limit.
+
+- openLink: exp://127.0.0.1:8081 
+
+# Wait for Expo Go to bundle by matching ANY possible screen state we might be left in
+- extendedWaitUntil:
+    visible: ".*(Welcome to Sharene|Enter an email|Check your email|Created Links|Encrypted Photo Sharing).*"
+    timeout: 30000
+
+# 1. If we are stuck halfway through the login flow, back out to Welcome
+- runFlow:
+    when:
+      visible: "← Back"
+    commands:
+      - tapOn: "← Back"
+- runFlow:
+    when:
+      visible: "← Back"
+    commands:
+      - tapOn: "← Back"
+
+# 2. If we are fully signed in, Sign Out
+- runFlow:
+    when:
+      visible: "Sign Out"
+    commands:
+      - tapOn: "Sign Out"
+
+## EDGE CASE 1: Invalid Email Format
+- tapOn: "Get Started"
+- tapOn: "Your Email"
+- inputText: "not-an-email"
+- tapOn: "Continue"
+
+# App logic catches missing '@'
+- assertVisible: "Invalid Email"
+- tapOn: "OK"
+- eraseText # Clears the input field
+
+## EDGE CASE 2: Invalid OTP Code Verification
+- inputText: "edgecase-test@example.com"
+- tapOn: "Continue"
+
+# Should be on Code Entry screen
+- assertVisible: "Check your email"
+- tapOn: "000000" # Tap the placeholder to focus
+- inputText: "111111" # Type a definitely wrong code
+- tapOn: "Verify"
+
+# Assert invalid code alert from Supabase
+- assertVisible: "Verification Failed"
+- assertVisible: ".*The code was invalid or has expired.*"
+- tapOn: "OK"
+
+## EDGE CASE 3: 60-second Rate Limit (Cooldown)
+# We just requested a code. Let's go back and request another one instantly.
+- tapOn: "← Back"
+- tapOn: "Continue"
+
+# Assert the rate limit alert from Supabase
+- assertVisible: "Wait"
+- assertVisible: ".*Wait a moment before requesting a new code.*"
+- tapOn: "OK"

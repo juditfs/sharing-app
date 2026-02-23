@@ -18,6 +18,11 @@
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "Sharene needs access to your photos to encrypt and share them securely.",
         "NSCameraUsageDescription": "Sharene needs access to your camera to take photos for secure sharing."
+      },
+      "entitlements": {
+        "com.apple.developer.applesignin": [
+          "Default"
+        ]
       }
     },
     "android": {
@@ -26,12 +31,15 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [],
+      "package": "com.sharene.app"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "expo-apple-authentication",
       "expo-sqlite",
       [
         "expo-image-picker",

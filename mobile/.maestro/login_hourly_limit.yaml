@@ -1,0 +1,64 @@
+appId: host.exp.exponent
+---
+# IMPORTANT: This test verifies the "System Busy" (30 emails/hour) rate limit.
+# This test will intentionally FAIL unless your Supabase project's email limit 
+# has ACTUALLY been exhausted in reality. You can use this script when you 
+# hit that limit to verify the UI handles it gracefully.
+
+- stopApp: host.exp.exponent
+- openLink: exp://127.0.0.1:8081 
+
+# Wait for Expo Go to bundle by matching ANY possible screen state we might be left in
+- extendedWaitUntil:
+    visible: ".*(Welcome to Sharene|Enter an email|Check your email|Created Links|Encrypted Photo Sharing).*"
+    timeout: 30000
+
+# 1. If we are stuck halfway through the login flow, back out to Welcome
+- runFlow:
+    when:
+      visible: "← Back"
+    commands:
+      - tapOn: "← Back"
+- runFlow:
+    when:
+      visible: "← Back"
+    commands:
+      - tapOn: "← Back"
+
+# 2. If we are fully signed in, Sign Out
+- runFlow:
+    when:
+      visible: "Sign Out"
+    commands:
+      - tapOn: "Sign Out"
+
+- assertVisible: "Welcome to Sharene"
+- tapOn: "Get Started"
+
+# Burst 31 emails using random addresses to completely exhaust the 30/hour quota
+# without hitting the 60-second per-email cooldown limit.
+- repeat:
+    times: 31
+    commands:
+      # Generate a random email every iteration to bypass the 60s cooldown
+      - evalScript: ${output.randomEmail = 'burn-' + Math.random().toString(36).substring(7) + '@example.com'}
+      - tapOn: "Your Email"
+      - inputText: ${output.randomEmail}
+      - tapOn: "Continue"
+      # Wait for the code entry screen to appear (success)
+      - extendedWaitUntil:
+          visible: "Check your email"
+          timeout: 5000
+      # Go back to the email input for the next iteration
+      - tapOn: "← Back"
+      - tapOn: "Your Email"
+      - eraseText
+
+# Now that the quota is burnt, the 32nd attempt should fail with the rate limit error
+- inputText: "final-attempt@example.com"
+- tapOn: "Continue"
+
+# Assert the hourly project-wide rate limit alert from Supabase
+- assertVisible: "System Busy"
+- assertVisible: ".*Email limit reached.*"
+- tapOn: "OK"
