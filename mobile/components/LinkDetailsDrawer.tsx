@@ -37,14 +37,10 @@ const formatUploadDate = (dateString?: string) => {
     return `Uploaded ${month} ${day}`;
 };
 
-const formatTimeLeft = (createdAt?: string, expiresAtOrDuration?: string) => {
-    if (!createdAt || !expiresAtOrDuration) return 'Never';
-    // Simply check duration strings like 1h, 1d, 1w for now, or actual dates
-    // If it's an actual ISO string:
-    const now = new Date();
+const getExpiryDate = (createdAt?: string, expiresAtOrDuration?: string): Date | null => {
+    if (!createdAt || !expiresAtOrDuration) return null;
     let expiryDate = new Date(expiresAtOrDuration);
     if (isNaN(expiryDate.getTime())) {
-        // It's a duration string like "1d", "1w"
         expiryDate = new Date(createdAt);
         const val = parseInt(expiresAtOrDuration);
         if (expiresAtOrDuration.endsWith('m')) expiryDate.setMinutes(expiryDate.getMinutes() + val);
@@ -52,7 +48,14 @@ const formatTimeLeft = (createdAt?: string, expiresAtOrDuration?: string) => {
         else if (expiresAtOrDuration.endsWith('d')) expiryDate.setDate(expiryDate.getDate() + val);
         else if (expiresAtOrDuration.endsWith('w')) expiryDate.setDate(expiryDate.getDate() + val * 7);
     }
+    return expiryDate;
+};
 
+const formatTimeLeft = (createdAt?: string, expiresAtOrDuration?: string) => {
+    const expiryDate = getExpiryDate(createdAt, expiresAtOrDuration);
+    if (!expiryDate) return 'Never';
+
+    const now = new Date();
     if (expiryDate <= now) return 'Expired';
 
     const diffMs = expiryDate.getTime() - now.getTime();
@@ -66,17 +69,8 @@ const formatTimeLeft = (createdAt?: string, expiresAtOrDuration?: string) => {
 };
 
 const formatFormattedExpiry = (createdAt?: string, expiresAtOrDuration?: string) => {
-    if (!createdAt || !expiresAtOrDuration) return 'Never';
-    let expiryDate = new Date(expiresAtOrDuration);
-    if (isNaN(expiryDate.getTime())) {
-        // It's a duration string like "1d", "1w"
-        expiryDate = new Date(createdAt);
-        const val = parseInt(expiresAtOrDuration);
-        if (expiresAtOrDuration.endsWith('m')) expiryDate.setMinutes(expiryDate.getMinutes() + val);
-        else if (expiresAtOrDuration.endsWith('h')) expiryDate.setHours(expiryDate.getHours() + val);
-        else if (expiresAtOrDuration.endsWith('d')) expiryDate.setDate(expiryDate.getDate() + val);
-        else if (expiresAtOrDuration.endsWith('w')) expiryDate.setDate(expiryDate.getDate() + val * 7);
-    }
+    const expiryDate = getExpiryDate(createdAt, expiresAtOrDuration);
+    if (!expiryDate) return 'Never';
 
     const month = expiryDate.toLocaleString('en-US', { month: 'short' });
     const day = expiryDate.getDate();
@@ -297,6 +291,7 @@ export function LinkDetailsDrawer({ visible, onClose, onUpdateSettings, onCopy, 
                                 <DateTimePickerModal
                                     isVisible={showEditExpiry}
                                     mode="datetime"
+                                    date={getExpiryDate(link.createdAt, settings.expiry) || new Date()}
                                     onConfirm={handleConfirmExpiry}
                                     onCancel={() => setShowEditExpiry(false)}
                                     minimumDate={new Date()}

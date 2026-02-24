@@ -68,6 +68,27 @@ const formatDate = (dateString: string) => {
     return `${month} ${day} ${hours}:${minutes}`;
 };
 
+const getExpirationStatus = (expiresAt: string | null) => {
+    if (!expiresAt) return null;
+
+    const now = new Date();
+    const expiryDate = new Date(expiresAt);
+
+    if (expiryDate <= now) return { text: 'Expired', isExpiringSoon: true };
+
+    const diffMs = expiryDate.getTime() - now.getTime();
+    const diffHours = diffMs / 3600000;
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffDays > 0) return { text: `${diffDays}d left`, isExpiringSoon: false };
+
+    const remainingHours = Math.floor(diffHours);
+    if (remainingHours > 0) return { text: `${remainingHours}h left`, isExpiringSoon: true };
+
+    const remainingMins = Math.floor(diffMs / 60000);
+    return { text: `${remainingMins}m left`, isExpiringSoon: true };
+};
+
 interface DashboardScreenProps {
     onOpenSettings: (link: LinkItem) => void;
     onCopyLink: (link: LinkItem) => void;
@@ -298,10 +319,24 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
 
                 {/* Right: Actions & Stats */}
                 <View style={styles.actionsContainer}>
-                    <MaterialCommunityIcons name="eye-outline" size={14} color="#888" style={{ marginRight: 4 }} />
-                    <Text style={styles.viewCountText}>
-                        {item.view_count || 0} views
-                    </Text>
+                    <View style={styles.statRowRight}>
+                        <MaterialCommunityIcons name="eye-outline" size={14} color="#888" style={{ marginRight: 4 }} />
+                        <Text style={styles.viewCountText}>
+                            {item.view_count || 0} views
+                        </Text>
+                    </View>
+                    {(() => {
+                        const status = getExpirationStatus(item.expires_at);
+                        if (!status) return null;
+                        return (
+                            <View style={[styles.statRowRight, { marginTop: 4 }]}>
+                                <MaterialCommunityIcons name="clock-outline" size={14} color={status.isExpiringSoon ? '#E02424' : '#888'} style={{ marginRight: 4 }} />
+                                <Text style={[styles.expirationText, status.isExpiringSoon && { color: '#E02424' }]}>
+                                    {status.text}
+                                </Text>
+                            </View>
+                        );
+                    })()}
                 </View>
             </TouchableOpacity>
         );
@@ -362,10 +397,24 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
                     <Text variant="bodySmall" style={styles.date}>{formatDate(item.created_at)}</Text>
                 </View>
                 <View style={styles.actionsContainer}>
-                    <MaterialCommunityIcons name="eye-outline" size={14} color="#888" style={{ marginRight: 4 }} />
-                    <Text style={styles.viewCountText}>
-                        {item.view_count || 0} views
-                    </Text>
+                    <View style={styles.statRowRight}>
+                        <MaterialCommunityIcons name="eye-outline" size={14} color="#888" style={{ marginRight: 4 }} />
+                        <Text style={styles.viewCountText}>
+                            {item.view_count || 0} views
+                        </Text>
+                    </View>
+                    {(() => {
+                        const status = getExpirationStatus(item.expires_at);
+                        if (!status) return null;
+                        return (
+                            <View style={[styles.statRowRight, { marginTop: 4 }]}>
+                                <MaterialCommunityIcons name="clock-outline" size={14} color={status.isExpiringSoon ? '#E02424' : '#888'} style={{ marginRight: 4 }} />
+                                <Text style={[styles.expirationText, status.isExpiringSoon && { color: '#E02424' }]}>
+                                    {status.text}
+                                </Text>
+                            </View>
+                        );
+                    })()}
                 </View>
             </Animated.View>
         );
@@ -611,8 +660,16 @@ const styles = StyleSheet.create({
         marginTop: 2,
     },
     actionsContainer: {
+        alignItems: 'flex-end',
+        justifyContent: 'center',
+    },
+    statRowRight: {
         flexDirection: 'row',
         alignItems: 'center',
+    },
+    expirationText: {
+        fontSize: 12,
+        color: '#888',
     },
     viewChip: {
         height: 24,
