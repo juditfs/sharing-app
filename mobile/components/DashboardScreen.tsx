@@ -513,7 +513,7 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
 
     return (
         <View style={styles.container}>
-            <Text variant="displaySmall" style={styles.headerTitle}>Created Links</Text>
+            <Text variant="displaySmall" style={styles.headerTitle}>Your Shares</Text>
 
             <SectionList
                 sections={groupLinksByDate(links)}

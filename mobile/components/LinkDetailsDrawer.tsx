@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { StyleSheet, View, Text, Modal, TouchableOpacity, Switch, ActivityIndicator, Alert, TouchableWithoutFeedback, Animated, Dimensions } from 'react-native';
+import { StyleSheet, View, Text, Modal, TouchableOpacity, Switch, ActivityIndicator, Alert, TouchableWithoutFeedback, Animated, Dimensions, Share } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
@@ -204,6 +204,18 @@ export function LinkDetailsDrawer({ visible, onClose, onUpdateSettings, onCopy, 
         ]);
     };
 
+    const handleShare = async () => {
+        if (!link) return;
+        try {
+            await Share.share({
+                message: link.shareUrl,
+                url: link.shareUrl,
+            });
+        } catch (error: any) {
+            Alert.alert('Error', error.message || 'Failed to share');
+        }
+    };
+
     if (!link || !settings) return null;
 
     const hasThumbnail = !!settings.publicThumbnailUrl;
@@ -327,6 +339,15 @@ export function LinkDetailsDrawer({ visible, onClose, onUpdateSettings, onCopy, 
                             <Text style={styles.shareUrlText} numberOfLines={1} ellipsizeMode="middle">
                                 {link.shareUrl}
                             </Text>
+
+                            <TouchableOpacity
+                                style={styles.actionButtonOutline}
+                                onPress={handleShare}
+                            >
+                                <MaterialCommunityIcons name="export-variant" size={20} color="#333" />
+                                <Text style={styles.actionButtonOutlineText}>Share link</Text>
+                            </TouchableOpacity>
+
                             <TouchableOpacity
                                 style={styles.actionButtonOutline}
                                 onPress={() => { handleClose(); onCopy(link.shareUrl); }}
