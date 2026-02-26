@@ -5,7 +5,7 @@ name: Social Preview Smoke Test
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, fix/social-preview-hardening ]
   pull_request:
     branches: [ main ]
   workflow_dispatch: # Allows manual trigger
