@@ -10,6 +10,7 @@ import { getUserLinks, LinkItem, deleteLink } from '../lib/api';
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 import { EncryptedThumbnail } from './EncryptedThumbnail';
+import { SwipeableRow } from './SwipeableRow';
 
 type SectionData = {
     title: string;
@@ -103,6 +104,8 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
     const [links, setLinks] = useState<LinkItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    // Lock list scrolling while a row swipe gesture is active
+    const [listScrollEnabled, setListScrollEnabled] = useState(true);
 
     // Regular Menu (Black FAB)
     const [menuVisible, setMenuVisible] = useState(false);
@@ -275,93 +278,100 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
         const isDeleted = !!item.deleted_at;
 
         return (
-            <TouchableOpacity
-                ref={(ref) => {
-                    if (ref) itemRefs.current.set(item.id, ref as unknown as View);
-                }}
-                activeOpacity={isDeleted ? 1 : 0.7}
-                onPress={isDeleted ? undefined : () => {
-                    const ref = itemRefs.current.get(item.id);
-                    if (ref) {
-                        ref.measureInWindow((x, y, width, height) => {
-                            onLinkPress(item, { x, y, width, height });
-                        });
-                    } else {
-                        onLinkPress(item);
-                    }
-                }}
-                onLongPress={() => handleLongPress(item, item.id)}
-                delayLongPress={200}
-                style={[styles.itemContainer, isDeleted && styles.itemContainerDeleted]}
+            <SwipeableRow
+                disabled={isDeleted}
+                onDelete={() => handleDeleteLink(item)}
+                onSwipeStart={() => setListScrollEnabled(false)}
+                onSwipeEnd={() => setListScrollEnabled(true)}
             >
-                {/* Left: Thumbnail */}
-                <View style={[styles.thumbnailContainer, isDeleted && styles.thumbnailContainerDeleted]}>
-                    {isDeleted ? (
-                        <View style={styles.placeholderThumbnail}>
-                            <MaterialCommunityIcons name="image-off-outline" size={24} color="#ccc" />
-                        </View>
-                    ) : item.public_thumbnail_url ? (
-                        <Image
-                            key={`public-${item.id}-${item.public_thumbnail_url}`}
-                            source={{ uri: item.public_thumbnail_url }}
-                            style={styles.thumbnail}
-                            contentFit="cover"
-                        />
-                    ) : item.thumbnail_url && item.encryption_key ? (
-                        <EncryptedThumbnail
-                            key={`encrypted-${item.id}-${item.thumbnail_url}`}
-                            path={item.thumbnail_url}
-                            encryptionKey={item.encryption_key}
-                            style={styles.thumbnail}
-                        />
-                    ) : (
-                        <View style={styles.placeholderThumbnail}>
-                            <MaterialCommunityIcons name="lock" size={24} color="#aaa" />
-                        </View>
-                    )}
-                </View>
-
-                {/* Center: Info */}
-                <View style={styles.infoContainer}>
-                    <Text variant="titleMedium" style={[styles.shortCode, isDeleted && { color: '#aaa' }]}>
-                        /{item.short_code}
-                    </Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
-                        <Text variant="bodySmall" style={{ color: '#888' }}>
-                            {formatDate(item.created_at)}
-                        </Text>
-                        <Text style={{ color: '#888', marginHorizontal: 6, fontSize: 12 }}>•</Text>
-                        <MaterialCommunityIcons name="eye-outline" size={12} color="#888" style={{ marginRight: 4 }} />
-                        <Text style={{ color: '#888', fontSize: 12 }}>
-                            {item.view_count || 0}
-                        </Text>
+                <TouchableOpacity
+                    ref={(ref) => {
+                        if (ref) itemRefs.current.set(item.id, ref as unknown as View);
+                    }}
+                    activeOpacity={isDeleted ? 1 : 0.7}
+                    onPress={isDeleted ? undefined : () => {
+                        const ref = itemRefs.current.get(item.id);
+                        if (ref) {
+                            ref.measureInWindow((x, y, width, height) => {
+                                onLinkPress(item, { x, y, width, height });
+                            });
+                        } else {
+                            onLinkPress(item);
+                        }
+                    }}
+                    onLongPress={() => handleLongPress(item, item.id)}
+                    delayLongPress={200}
+                    style={[styles.itemContainer, isDeleted && styles.itemContainerDeleted]}
+                >
+                    {/* Left: Thumbnail */}
+                    <View style={[styles.thumbnailContainer, isDeleted && styles.thumbnailContainerDeleted]}>
+                        {isDeleted ? (
+                            <View style={styles.placeholderThumbnail}>
+                                <MaterialCommunityIcons name="image-off-outline" size={24} color="#ccc" />
+                            </View>
+                        ) : item.public_thumbnail_url ? (
+                            <Image
+                                key={`public-${item.id}-${item.public_thumbnail_url}`}
+                                source={{ uri: item.public_thumbnail_url }}
+                                style={styles.thumbnail}
+                                contentFit="cover"
+                            />
+                        ) : item.thumbnail_url && item.encryption_key ? (
+                            <EncryptedThumbnail
+                                key={`encrypted-${item.id}-${item.thumbnail_url}`}
+                                path={item.thumbnail_url}
+                                encryptionKey={item.encryption_key}
+                                style={styles.thumbnail}
+                            />
+                        ) : (
+                            <View style={styles.placeholderThumbnail}>
+                                <MaterialCommunityIcons name="lock" size={24} color="#aaa" />
+                            </View>
+                        )}
                     </View>
-                </View>
 
-                {/* Right: Badge */}
-                <View style={styles.actionsContainer}>
-                    {(() => {
-                        const status = getLinkStatus(item.expires_at, item.deleted_at);
-                        if (!status) return null;
-                        if (status.isDeleted) {
+                    {/* Center: Info */}
+                    <View style={styles.infoContainer}>
+                        <Text variant="titleMedium" style={[styles.shortCode, isDeleted && { color: '#aaa' }]}>
+                            /{item.short_code}
+                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                            <Text variant="bodySmall" style={{ color: '#888' }}>
+                                {formatDate(item.created_at)}
+                            </Text>
+                            <Text style={{ color: '#888', marginHorizontal: 6, fontSize: 12 }}>•</Text>
+                            <MaterialCommunityIcons name="eye-outline" size={12} color="#888" style={{ marginRight: 4 }} />
+                            <Text style={{ color: '#888', fontSize: 12 }}>
+                                {item.view_count || 0}
+                            </Text>
+                        </View>
+                    </View>
+
+                    {/* Right: Badge */}
+                    <View style={styles.actionsContainer}>
+                        {(() => {
+                            const status = getLinkStatus(item.expires_at, item.deleted_at);
+                            if (!status) return null;
+                            if (status.isDeleted) {
+                                return (
+                                    <View style={styles.deletedBadge}>
+                                        <MaterialCommunityIcons name="trash-can-outline" size={12} color="#aaa" style={{ marginRight: 4 }} />
+                                        <Text style={styles.deletedBadgeText}>Deleted</Text>
+                                    </View>
+                                );
+                            }
                             return (
-                                <View style={styles.deletedBadge}>
-                                    <MaterialCommunityIcons name="trash-can-outline" size={12} color="#aaa" style={{ marginRight: 4 }} />
-                                    <Text style={styles.deletedBadgeText}>Deleted</Text>
+                                <View style={[styles.expiryBadge, status.isExpiringSoon && styles.expiryBadgeUrgent]}>
+                                    <MaterialCommunityIcons name="clock-outline" size={12} color={status.isExpiringSoon ? '#9B1C1C' : '#555'} style={{ marginRight: 4 }} />
+                                    <Text style={[styles.expiryBadgeText, status.isExpiringSoon && styles.expiryBadgeTextUrgent]}>
+                                        {status.text}
+                                    </Text>
                                 </View>
                             );
-                        }
-                        return (
-                            <View style={[styles.expiryBadge, status.isExpiringSoon && styles.expiryBadgeUrgent]}>
-                                <MaterialCommunityIcons name="clock-outline" size={12} color={status.isExpiringSoon ? '#9B1C1C' : '#555'} style={{ marginRight: 4 }} />
-                                <Text style={[styles.expiryBadgeText, status.isExpiringSoon && styles.expiryBadgeTextUrgent]}>
-                                    {status.text}
-                                </Text>
-                            </View>
-                        );
-                    })()}
-                </View>
-            </TouchableOpacity>
+                        })()}
+                    </View>
+                </TouchableOpacity>
+            </SwipeableRow>
         );
     };
 
@@ -562,6 +572,7 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
                 )}
                 keyExtractor={(item) => item.id}
                 contentContainerStyle={styles.listContent}
+                scrollEnabled={listScrollEnabled}
                 refreshControl={
                     <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
                 }
