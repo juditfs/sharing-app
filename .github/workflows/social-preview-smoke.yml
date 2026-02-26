@@ -1,0 +1,42 @@
+name: Social Preview Smoke Test
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  smoke:
+    name: Run Social Preview Smoke Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: social-preview-smoke
+      cancel-in-progress: false
+    env:
+      PROJECT_REF: ${{ vars.PROJECT_REF != '' && vars.PROJECT_REF || 'ndbqasanctkwagyinfag' }}
+      VIEWER_URL: ${{ vars.VIEWER_URL != '' && vars.VIEWER_URL || 'https://viewer-rho-seven.vercel.app' }}
+      SMOKE_TEST_SHORT_CODE: ${{ secrets.SMOKE_TEST_SHORT_CODE }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${SMOKE_TEST_SHORT_CODE:-}" ]]; then
+            echo "SMOKE_TEST_SHORT_CODE secret is required."
+            exit 1
+          fi
+
+      - name: Run smoke test script
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/smoke-social-preview.sh

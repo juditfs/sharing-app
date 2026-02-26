@@ -56,3 +56,21 @@ These settings must be configured manually in the Supabase Dashboard:
 | Email OTP length | Auth → Providers → Email | 6 |
 | Email OTP expiry | Auth → Settings | 120s (recommended) |
 | Magic Link template | Auth → Email Templates → Magic Link | Use `{{ .Token }}` in body |
+
+---
+
+## Social Previews
+
+### Social preview cards are missing image/text
+
+1. Deploy metadata function:
+   `supabase functions deploy get-link-metadata --project-ref ndbqasanctkwagyinfag`
+2. Ensure public JWT mode is pinned in repo:
+   - `supabase/functions/get-link-metadata/config.toml` contains `verify_jwt = false`
+   - `supabase/functions/get-link/config.toml` contains `verify_jwt = false`
+3. Run smoke checks:
+   `SMOKE_TEST_SHORT_CODE=<code> ./scripts/smoke-social-preview.sh`
+4. Confirm fallback image is reachable:
+   `curl -I https://viewer-rho-seven.vercel.app/og-default.png`
+5. If WhatsApp still shows stale preview, re-scrape with Facebook debugger:
+   `https://developers.facebook.com/tools/debug/?q=<your_link>`

@@ -1,10 +1,11 @@
 import { Suspense } from 'react';
 import { Metadata } from 'next';
-import { redirect } from 'next/navigation';
 import ViewPage from './ViewPage';
 import LoadingState from '@/components/LoadingState';
+import { fetchSocialMetadata } from '@/lib/fetchSocialMetadata';
 
 // export const dynamic = 'force-dynamic'; // Let Next.js decide based on searchParams
+const DEFAULT_VIEWER_URL = 'https://viewer-rho-seven.vercel.app';
 
 export async function generateMetadata({ searchParams }: {
     searchParams: Promise<{ code?: string }>
@@ -24,42 +25,17 @@ export async function generateMetadata({ searchParams }: {
     }
 
     try {
-        // Fetch link metadata from Edge Function
-        // Using hardcoded URL to ensure it works on Vercel
-        const url = 'https://ndbqasanctkwagyinfag.supabase.co/functions/v1/get-link';
-
-        console.log('[OG] Fetching metadata for code:', code);
-
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                shortCode: code,
-                action: 'metadata'
-            }),
-            cache: 'no-store', // Disable caching for metadata
-            next: { revalidate: 0 } // Next.js specific cache disable
-        });
-
-        console.log('[OG] Response status:', response.status);
-
-        if (!response.ok) {
-            console.error('[OG] Failed to fetch metadata:', response.status);
-            // Don't throw, just return default to avoid crashing
+        const viewerBaseUrl = (process.env.NEXT_PUBLIC_VIEWER_URL || DEFAULT_VIEWER_URL).replace(/\/$/, '');
+        const defaultOgImage = `${viewerBaseUrl}/og-default.png`;
+        const data = await fetchSocialMetadata(code);
+        if (!data) {
             return {
                 title: 'Sharene',
                 description: 'Encrypted photo sharing'
             };
         }
-
-        const data = await response.json();
-        console.log('[OG] Metadata fetched:', {
-            hasShareText: !!data.shareText,
-            hasThumbnail: !!data.publicThumbnailUrl
-        });
-
         const shareText = data.shareText || 'user shared a photo';
-        const thumbnailUrl = data.publicThumbnailUrl;
+        const thumbnailUrl = data.publicThumbnailUrl || defaultOgImage;
 
         // Return rich metadata
         return {
@@ -68,14 +44,15 @@ export async function generateMetadata({ searchParams }: {
             openGraph: {
                 title: 'Sharene',
                 description: shareText,
-                images: thumbnailUrl ? [
+                url: `${viewerBaseUrl}/view?code=${code}`,
+                images: [
                     {
                         url: thumbnailUrl,
                         width: 1200, // Standard OG size
                         height: 630,
                         alt: 'Photo preview'
                     }
-                ] : [],
+                ],
                 type: 'website',
                 siteName: 'Sharene'
             },
@@ -83,11 +60,10 @@ export async function generateMetadata({ searchParams }: {
                 card: 'summary_large_image',
                 title: 'Sharene',
                 description: shareText,
-                images: thumbnailUrl ? [thumbnailUrl] : []
+                images: [thumbnailUrl]
             }
         };
-    } catch (error: any) {
-        console.error('[OG] Error generating metadata:', error);
+    } catch {
         return {
             title: 'Sharene',
             description: 'Encrypted photo sharing'
