@@ -2,6 +2,7 @@
   "expo": {
     "name": "Sharene",
     "slug": "sharene",
+    "scheme": "sharene",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -17,11 +18,22 @@
       "bundleIdentifier": "com.sharene.app",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "Sharene needs access to your photos to encrypt and share them securely.",
-        "NSCameraUsageDescription": "Sharene needs access to your camera to take photos for secure sharing."
+        "NSCameraUsageDescription": "Sharene needs access to your camera to take photos for secure sharing.",
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": [
+              "sharene"
+            ],
+            "CFBundleURLName": "com.sharene.app"
+          }
+        ]
       },
       "entitlements": {
         "com.apple.developer.applesignin": [
           "Default"
+        ],
+        "com.apple.security.application-groups": [
+          "group.com.sharene.app"
         ]
       }
     },

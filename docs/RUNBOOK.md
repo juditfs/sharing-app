@@ -7,22 +7,28 @@ This file documents manual infrastructure steps that cannot be safely automated 
 
 ## Scheduled Jobs
 
-### cleanup-expired (Hourly)
+### cleanup-expired (Every 10 minutes via pg_cron)
 
 **Purpose:** Deletes storage files and marks database records for expired/revoked shared links.
 
-**How to schedule:**
+**How it works:**
+Scheduled via `pg_cron` + `pg_net` (see migration `20260225_cron_cleanup_schedule.sql`). Credentials are stored in Supabase Vault — never hardcoded.
 
-1. Go to [Supabase Dashboard → Edge Functions](https://supabase.com/dashboard/project/ndbqasanctkwagyinfag/functions)
-2. Open the `cleanup-expired` function
-3. Go to the **Schedule** tab
-4. Add a new schedule with cron expression: `0 * * * *` (every hour, on the hour)
-5. Save
+**One-time setup (run once in Supabase SQL Editor before applying the migration):**
 
-**Re-apply after:** Any project reset or new Supabase environment.
+```sql
+select vault.create_secret('https://ndbqasanctkwagyinfag.supabase.co', 'project_url');
+select vault.create_secret('<YOUR_ANON_KEY>', 'anon_key');
+```
+
+The anon key is `EXPO_PUBLIC_SUPABASE_ANON_KEY` from `mobile/.env`.
+
+**Re-apply after:** Any project reset or new Supabase environment (re-run the Vault setup above, then re-apply the migration).
 
 > [!NOTE]
-> Credentials are injected securely by Supabase's scheduler — no service-role key is embedded anywhere in the repo.
+> To verify the job is running, check the `cron.job_run_details` table in the SQL editor.
+> To change frequency, update the cron expression in the migration or run:
+> `SELECT cron.alter_job(job_id, schedule := '*/5 * * * *');`
 
 ---
 
@@ -37,6 +43,7 @@ Current migrations in `supabase/migrations/`:
 - `20260203120000_og_pages_bucket.sql`
 - `20260218_apple_auth_migration.sql`
 - `20260219_rate_limit_index.sql`
+- `20260225_cron_cleanup_schedule.sql` ← enables pg_cron/pg_net and schedules cleanup
 
 ---
 

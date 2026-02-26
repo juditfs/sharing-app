@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Alert, TouchableWithoutFeedback, Modal } from 'react-native';
+import { StyleSheet, View, Alert, TouchableWithoutFeedback, Modal, LayoutRectangle } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as ImagePicker from 'expo-image-picker';
 import * as Clipboard from 'expo-clipboard';
@@ -7,11 +7,12 @@ import { BlurView } from 'expo-blur';
 import { Provider as PaperProvider, Button, Text, ActivityIndicator, Snackbar } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-import { Platform } from 'react-native';
+import { Platform, AppState, AppStateStatus } from 'react-native';
 import { getSession, isAnonymousSession, signOut, prepareMigration, completeMigration } from './lib/auth';
 import LoginScreen from './screens/LoginScreen';
 import { handlePhotoError } from './lib/errorHandling';
 import { processAndUploadPhoto } from './lib/photoWorkflow';
+import { getPendingSharedImage } from './lib/shareExtension';
 import { LinkDetailsDrawer, LinkDetailsData } from './components/LinkDetailsDrawer';
 import { DashboardScreen } from './components/DashboardScreen';
 import { LinkSettings, updateLink, LinkItem, getUserLinks, deleteLink } from './lib/api';
@@ -36,9 +37,11 @@ export default function App() {
   // Settings Drawer state
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [editingLink, setEditingLink] = useState<LinkDetailsData | null>(null);
+  const [editingLinkLayout, setEditingLinkLayout] = useState<LayoutRectangle | undefined>(undefined);
 
   // Dashboard refresh function
   const dashboardRefreshRef = useRef<(() => void) | null>(null);
+  const pendingDashboardRefreshRef = useRef(false);
 
 
   useEffect(() => {
@@ -78,6 +81,38 @@ export default function App() {
     init();
   }, []);
 
+  // Check for pending shared images on App Activation
+  useEffect(() => {
+    const handleAppStateChange = async (nextAppState: AppStateStatus) => {
+      if (nextAppState === 'active' && sessionReady && !showLogin) {
+        try {
+          const pending = await getPendingSharedImage();
+          if (pending) {
+            console.log('[App] Found pending shared image, starting upload...');
+            // handlePhotoUpload already sets loading state and handles the UI
+            try {
+              await handlePhotoUpload(pending.uri);
+              await pending.cleanUp();
+            } catch (e) {
+              console.error('[App] Failed to upload pending shared image:', e);
+              // Do not cleanUp so it can be retried later
+            }
+          }
+        } catch (err) {
+          console.error('[App] Error checking for shared image:', err);
+        }
+      }
+    };
+
+    // Check once explicitly if session is already ready (e.g. initial launch)
+    if (sessionReady && !showLogin) {
+      handleAppStateChange('active');
+    }
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    return () => subscription.remove();
+  }, [sessionReady, showLogin]);
+
   const handlePhotoUpload = async (uri: string) => {
     try {
       setLoading(true);
@@ -101,6 +136,7 @@ export default function App() {
       setView('dashboard');
 
       // Setup editing state immediately to open drawer
+      setEditingLinkLayout(undefined);
       setEditingLink({
         shortCode: uploadResult.shortCode,
         settings: {
@@ -113,6 +149,11 @@ export default function App() {
         createdAt: new Date().toISOString()
       });
       setSettingsVisible(true);
+
+      // Ensure dashboard list reflects newly-created link even if first fetch raced.
+      setTimeout(() => {
+        refreshDashboard();
+      }, 700);
 
       setToastMessage('Copied link');
       setToastVisible(true);
@@ -182,7 +223,8 @@ export default function App() {
   // --- Dashboard Logic ---
   // const openDashboard = () => { setView('dashboard'); }; // Removed as per request
 
-  const handleOpenLinkDetails = (link: LinkItem) => {
+  const handleOpenLinkDetails = (link: LinkItem, layout?: LayoutRectangle) => {
+    setEditingLinkLayout(layout);
     setEditingLink({
       shortCode: link.short_code,
       settings: {
@@ -271,6 +313,22 @@ export default function App() {
       setShowLogin(true);
     } catch (err: any) {
       Alert.alert('Error', err?.message ?? 'Sign out failed.');
+    }
+  };
+
+  const refreshDashboard = async () => {
+    if (dashboardRefreshRef.current) {
+      dashboardRefreshRef.current();
+      return;
+    }
+
+    // Fallback if dashboard hasn't mounted its refresh callback yet.
+    pendingDashboardRefreshRef.current = true;
+    try {
+      const links = await getUserLinks();
+      setHasLinks(links.length > 0);
+    } catch (e) {
+      console.warn('[App] Fallback dashboard refresh failed:', e);
     }
   };
 
@@ -380,6 +438,10 @@ export default function App() {
                 onLinkPress={handleOpenLinkDetails}
                 onRefreshNeeded={(refreshFn) => {
                   dashboardRefreshRef.current = refreshFn;
+                  if (pendingDashboardRefreshRef.current) {
+                    pendingDashboardRefreshRef.current = false;
+                    refreshFn();
+                  }
                 }}
               />
             )}
@@ -389,18 +451,20 @@ export default function App() {
           {editingLink && (
             <LinkDetailsDrawer
               visible={settingsVisible}
-              onClose={() => setSettingsVisible(false)}
+              originLayout={editingLinkLayout}
+              onClose={() => {
+                setSettingsVisible(false);
+                refreshDashboard();
+              }}
               link={editingLink}
               onCopy={handleCopyLink}
               onDelete={async () => {
                 try {
                   await deleteLink(editingLink.shortCode);
                   setSettingsVisible(false);
-                  if (dashboardRefreshRef.current) {
-                    setTimeout(() => {
-                      dashboardRefreshRef.current?.();
-                    }, 500);
-                  }
+                  setTimeout(() => {
+                    refreshDashboard();
+                  }, 300);
                 } catch (e) {
                   // Error handled in drawer possibly, or we can just console.error
                   console.error('Delete failed:', e);
@@ -413,11 +477,9 @@ export default function App() {
                 setEditingLink(prev => prev ? { ...prev, settings: newSettings } : null);
 
                 // Refresh dashboard quietly
-                if (dashboardRefreshRef.current) {
-                  setTimeout(() => {
-                    dashboardRefreshRef.current?.();
-                  }, 500);
-                }
+                setTimeout(() => {
+                  refreshDashboard();
+                }, 300);
               }}
             />
           )}

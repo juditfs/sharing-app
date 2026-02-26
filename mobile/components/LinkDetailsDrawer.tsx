@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { StyleSheet, View, Text, Modal, TouchableOpacity, Switch, ActivityIndicator, Alert, TouchableWithoutFeedback, Animated, Dimensions, Share } from 'react-native';
+import { StyleSheet, View, Text, Modal, TouchableOpacity, Switch, ActivityIndicator, Alert, Animated, Dimensions, Share, LayoutRectangle } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import DateTimePickerModal from 'react-native-modal-datetime-picker';
@@ -25,9 +25,10 @@ interface LinkDetailsDrawerProps {
     onCopy: (url: string) => void;
     onDelete: () => Promise<void>;
     link: LinkDetailsData | null;
+    originLayout?: LayoutRectangle;
 }
 
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const formatUploadDate = (dateString?: string) => {
     if (!dateString) return '';
@@ -80,24 +81,25 @@ const formatFormattedExpiry = (createdAt?: string, expiresAtOrDuration?: string)
     return `${month} ${day}, ${year} at ${time}`;
 };
 
-export function LinkDetailsDrawer({ visible, onClose, onUpdateSettings, onCopy, onDelete, link }: LinkDetailsDrawerProps) {
+export function LinkDetailsDrawer({ visible, originLayout, onClose, onUpdateSettings, onCopy, onDelete, link }: LinkDetailsDrawerProps) {
     const [settings, setSettings] = useState<LinkSettings | null>(null);
     const [restoring, setRestoring] = useState(false);
     const [deleting, setDeleting] = useState(false);
     const [showEditExpiry, setShowEditExpiry] = useState(false);
-    const translateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
+    const animValue = useRef(new Animated.Value(0)).current;
 
     // Handle opening animation and reset state for new links
     useEffect(() => {
         if (visible && link) {
             setSettings(link.settings);
             setShowEditExpiry(false);
-            translateY.setValue(SCREEN_HEIGHT);
-            Animated.spring(translateY, {
-                toValue: 0,
+            animValue.setValue(0);
+            Animated.spring(animValue, {
+                toValue: 1,
                 friction: 8,
                 tension: 40,
-                useNativeDriver: true,
+                // We use useNativeDriver: false because we animate layout properties (width, height, top, left)
+                useNativeDriver: false,
             }).start();
         }
     }, [visible, link?.shortCode]);
@@ -110,10 +112,10 @@ export function LinkDetailsDrawer({ visible, onClose, onUpdateSettings, onCopy, 
     }, [link]);
 
     const handleClose = () => {
-        Animated.timing(translateY, {
-            toValue: SCREEN_HEIGHT,
+        Animated.timing(animValue, {
+            toValue: 0,
             duration: 250,
-            useNativeDriver: true,
+            useNativeDriver: false,
         }).start(() => onClose());
     };
 
@@ -221,25 +223,59 @@ export function LinkDetailsDrawer({ visible, onClose, onUpdateSettings, onCopy, 
     const hasThumbnail = !!settings.publicThumbnailUrl;
     const currentPublicThumbnailUrl = settings.publicThumbnailUrl ?? null;
 
+    // Animation interpolations
+    const top = animValue.interpolate({
+        inputRange: [0, 1],
+        outputRange: [originLayout?.y ?? SCREEN_HEIGHT, 0]
+    });
+    const left = animValue.interpolate({
+        inputRange: [0, 1],
+        outputRange: [originLayout?.x ?? 0, 0]
+    });
+    const width = animValue.interpolate({
+        inputRange: [0, 1],
+        outputRange: [originLayout?.width ?? SCREEN_WIDTH, SCREEN_WIDTH]
+    });
+    const height = animValue.interpolate({
+        inputRange: [0, 1],
+        outputRange: [originLayout?.height ?? SCREEN_HEIGHT, SCREEN_HEIGHT]
+    });
+    const borderRadius = animValue.interpolate({
+        inputRange: [0, 1],
+        outputRange: [originLayout ? 12 : 0, 0] // Match row border radius
+    });
+    const contentOpacity = animValue.interpolate({
+        inputRange: [0, 0.4, 1],
+        outputRange: [0, 0, 1]
+    });
+
     return (
         <Modal
-            animationType="fade"
+            animationType="none"
             transparent={true}
             visible={visible}
             onRequestClose={handleClose}
         >
-            <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={handleClose}>
-                <TouchableWithoutFeedback>
-                    <Animated.View style={[styles.drawer, { transform: [{ translateY }] }]}>
-                        <View style={styles.handleContainer}>
-                            <View style={styles.handle} />
-                        </View>
-
+            <View style={StyleSheet.absoluteFill}>
+                {/* Expandable container */}
+                <Animated.View style={{
+                    position: 'absolute',
+                    top, left, width, height,
+                    backgroundColor: '#F8F9FA',
+                    borderRadius,
+                    overflow: 'hidden',
+                }}>
+                    <Animated.View style={{
+                        width: SCREEN_WIDTH,
+                        height: SCREEN_HEIGHT,
+                        opacity: contentOpacity,
+                    }}>
                         <View style={styles.header}>
-                            <Text style={styles.title}>Shared Link</Text>
                             <TouchableOpacity onPress={handleClose} style={styles.closeButtonContainer}>
-                                <MaterialCommunityIcons name="close" size={20} color="#5E5E5E" />
+                                <MaterialCommunityIcons name="chevron-left" size={32} color="#5E5E5E" />
                             </TouchableOpacity>
+                            <Text style={styles.title}>Shared Link</Text>
+                            <View style={{ width: 32 }} />
                         </View>
 
                         <View style={styles.contentScroll}>
@@ -372,41 +408,20 @@ export function LinkDetailsDrawer({ visible, onClose, onUpdateSettings, onCopy, 
                             </TouchableOpacity>
                         </View>
                     </Animated.View>
-                </TouchableWithoutFeedback>
-            </TouchableOpacity>
+                </Animated.View>
+            </View>
         </Modal>
     );
 }
 
 const styles = StyleSheet.create({
-    overlay: {
-        flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.4)',
-        justifyContent: 'flex-end',
-    },
-    drawer: {
-        backgroundColor: '#F8F9FA', // Slightly gray background like design
-        borderTopLeftRadius: 20,
-        borderTopRightRadius: 20,
-        paddingHorizontal: 20,
-        paddingBottom: 40,
-        maxHeight: SCREEN_HEIGHT * 0.9,
-    },
-    handleContainer: {
-        alignItems: 'center',
-        paddingVertical: 10,
-    },
-    handle: {
-        width: 40,
-        height: 4,
-        borderRadius: 2,
-        backgroundColor: '#D1D1D6',
-    },
     header: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 20,
+        paddingHorizontal: 16,
+        paddingTop: 56, // For safe area / status bar
+        paddingBottom: 20,
     },
     title: {
         fontSize: 20,
@@ -414,13 +429,11 @@ const styles = StyleSheet.create({
         color: '#000',
     },
     closeButtonContainer: {
-        width: 30,
-        height: 30,
-        alignItems: 'flex-end',
+        alignItems: 'flex-start',
         justifyContent: 'center',
     },
     contentScroll: {
-        // Can be wrapped in ScrollView if needed
+        paddingHorizontal: 20,
     },
     imageCard: {
         backgroundColor: '#fff',

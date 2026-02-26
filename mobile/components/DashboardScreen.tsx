@@ -68,33 +68,34 @@ const formatDate = (dateString: string) => {
     return `${month} ${day} ${hours}:${minutes}`;
 };
 
-const getExpirationStatus = (expiresAt: string | null) => {
+const getLinkStatus = (expiresAt: string | null, deletedAt: string | null) => {
+    if (deletedAt) return { text: 'Deleted', isDeleted: true, isExpiringSoon: false };
     if (!expiresAt) return null;
 
     const now = new Date();
     const expiryDate = new Date(expiresAt);
 
-    if (expiryDate <= now) return { text: 'Expired', isExpiringSoon: true };
+    if (expiryDate <= now) return { text: 'Expired', isDeleted: false, isExpiringSoon: true };
 
     const diffMs = expiryDate.getTime() - now.getTime();
     const diffHours = diffMs / 3600000;
     const diffDays = Math.floor(diffHours / 24);
 
-    if (diffDays > 0) return { text: `${diffDays}d left`, isExpiringSoon: false };
+    if (diffDays > 0) return { text: `${diffDays}d left`, isDeleted: false, isExpiringSoon: false };
 
     const remainingHours = Math.floor(diffHours);
-    if (remainingHours > 0) return { text: `${remainingHours}h left`, isExpiringSoon: true };
+    if (remainingHours > 0) return { text: `${remainingHours}h left`, isDeleted: false, isExpiringSoon: true };
 
     const remainingMins = Math.floor(diffMs / 60000);
-    return { text: `${remainingMins}m left`, isExpiringSoon: true };
+    return { text: `${remainingMins}m left`, isDeleted: false, isExpiringSoon: true };
 };
 
 interface DashboardScreenProps {
-    onOpenSettings: (link: LinkItem) => void;
+    onOpenSettings: (link: LinkItem, layout?: LayoutRectangle) => void;
     onCopyLink: (link: LinkItem) => void;
     onTakePhoto: () => void;
     onPickPhoto: () => void;
-    onLinkPress: (link: LinkItem) => void;
+    onLinkPress: (link: LinkItem, layout?: LayoutRectangle) => void;
     onRefreshNeeded?: (refreshFn: () => void) => void;
 }
 
@@ -271,22 +272,35 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
     };
 
     const renderItem = ({ item }: { item: LinkItem }) => {
-
+        const isDeleted = !!item.deleted_at;
 
         return (
             <TouchableOpacity
                 ref={(ref) => {
                     if (ref) itemRefs.current.set(item.id, ref as unknown as View);
                 }}
-                activeOpacity={0.7}
-                onPress={() => onLinkPress(item)}
+                activeOpacity={isDeleted ? 1 : 0.7}
+                onPress={isDeleted ? undefined : () => {
+                    const ref = itemRefs.current.get(item.id);
+                    if (ref) {
+                        ref.measureInWindow((x, y, width, height) => {
+                            onLinkPress(item, { x, y, width, height });
+                        });
+                    } else {
+                        onLinkPress(item);
+                    }
+                }}
                 onLongPress={() => handleLongPress(item, item.id)}
                 delayLongPress={200}
-                style={styles.itemContainer}
+                style={[styles.itemContainer, isDeleted && styles.itemContainerDeleted]}
             >
                 {/* Left: Thumbnail */}
-                <View style={styles.thumbnailContainer}>
-                    {item.public_thumbnail_url ? (
+                <View style={[styles.thumbnailContainer, isDeleted && styles.thumbnailContainerDeleted]}>
+                    {isDeleted ? (
+                        <View style={styles.placeholderThumbnail}>
+                            <MaterialCommunityIcons name="image-off-outline" size={24} color="#ccc" />
+                        </View>
+                    ) : item.public_thumbnail_url ? (
                         <Image
                             key={`public-${item.id}-${item.public_thumbnail_url}`}
                             source={{ uri: item.public_thumbnail_url }}
@@ -309,29 +323,38 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
 
                 {/* Center: Info */}
                 <View style={styles.infoContainer}>
-                    <Text variant="titleMedium" style={styles.shortCode}>
+                    <Text variant="titleMedium" style={[styles.shortCode, isDeleted && { color: '#aaa' }]}>
                         /{item.short_code}
                     </Text>
-                    <Text variant="bodySmall" style={styles.date}>
-                        {formatDate(item.created_at)}
-                    </Text>
-                </View>
-
-                {/* Right: Actions & Stats */}
-                <View style={styles.actionsContainer}>
-                    <View style={styles.statRowRight}>
-                        <MaterialCommunityIcons name="eye-outline" size={14} color="#888" style={{ marginRight: 4 }} />
-                        <Text style={styles.viewCountText}>
-                            {item.view_count || 0} views
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                        <Text variant="bodySmall" style={{ color: '#888' }}>
+                            {formatDate(item.created_at)}
+                        </Text>
+                        <Text style={{ color: '#888', marginHorizontal: 6, fontSize: 12 }}>•</Text>
+                        <MaterialCommunityIcons name="eye-outline" size={12} color="#888" style={{ marginRight: 4 }} />
+                        <Text style={{ color: '#888', fontSize: 12 }}>
+                            {item.view_count || 0}
                         </Text>
                     </View>
+                </View>
+
+                {/* Right: Badge */}
+                <View style={styles.actionsContainer}>
                     {(() => {
-                        const status = getExpirationStatus(item.expires_at);
+                        const status = getLinkStatus(item.expires_at, item.deleted_at);
                         if (!status) return null;
+                        if (status.isDeleted) {
+                            return (
+                                <View style={styles.deletedBadge}>
+                                    <MaterialCommunityIcons name="trash-can-outline" size={12} color="#aaa" style={{ marginRight: 4 }} />
+                                    <Text style={styles.deletedBadgeText}>Deleted</Text>
+                                </View>
+                            );
+                        }
                         return (
-                            <View style={[styles.statRowRight, { marginTop: 4 }]}>
-                                <MaterialCommunityIcons name="clock-outline" size={14} color={status.isExpiringSoon ? '#E02424' : '#888'} style={{ marginRight: 4 }} />
-                                <Text style={[styles.expirationText, status.isExpiringSoon && { color: '#E02424' }]}>
+                            <View style={[styles.expiryBadge, status.isExpiringSoon && styles.expiryBadgeUrgent]}>
+                                <MaterialCommunityIcons name="clock-outline" size={12} color={status.isExpiringSoon ? '#9B1C1C' : '#555'} style={{ marginRight: 4 }} />
+                                <Text style={[styles.expiryBadgeText, status.isExpiringSoon && styles.expiryBadgeTextUrgent]}>
                                     {status.text}
                                 </Text>
                             </View>
@@ -373,8 +396,12 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
                 ]}
             >
                 {/* Re-render exact item content */}
-                <View style={styles.thumbnailContainer}>
-                    {item.public_thumbnail_url ? (
+                <View style={[styles.thumbnailContainer, !!item.deleted_at && styles.thumbnailContainerDeleted]}>
+                    {item.deleted_at ? (
+                        <View style={styles.placeholderThumbnail}>
+                            <MaterialCommunityIcons name="image-off-outline" size={24} color="#ccc" />
+                        </View>
+                    ) : item.public_thumbnail_url ? (
                         <Image
                             source={{ uri: item.public_thumbnail_url }}
                             style={styles.thumbnail}
@@ -393,23 +420,32 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
                     )}
                 </View>
                 <View style={styles.infoContainer}>
-                    <Text variant="titleMedium" style={styles.shortCode}>/{item.short_code}</Text>
-                    <Text variant="bodySmall" style={styles.date}>{formatDate(item.created_at)}</Text>
-                </View>
-                <View style={styles.actionsContainer}>
-                    <View style={styles.statRowRight}>
-                        <MaterialCommunityIcons name="eye-outline" size={14} color="#888" style={{ marginRight: 4 }} />
-                        <Text style={styles.viewCountText}>
-                            {item.view_count || 0} views
+                    <Text variant="titleMedium" style={[styles.shortCode, !!item.deleted_at && { color: '#aaa' }]}>/{item.short_code}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                        <Text variant="bodySmall" style={{ color: '#888' }}>{formatDate(item.created_at)}</Text>
+                        <Text style={{ color: '#888', marginHorizontal: 6, fontSize: 12 }}>•</Text>
+                        <MaterialCommunityIcons name="eye-outline" size={12} color="#888" style={{ marginRight: 4 }} />
+                        <Text style={{ color: '#888', fontSize: 12 }}>
+                            {item.view_count || 0}
                         </Text>
                     </View>
+                </View>
+                <View style={styles.actionsContainer}>
                     {(() => {
-                        const status = getExpirationStatus(item.expires_at);
+                        const status = getLinkStatus(item.expires_at, item.deleted_at);
                         if (!status) return null;
+                        if (status.isDeleted) {
+                            return (
+                                <View style={styles.deletedBadge}>
+                                    <MaterialCommunityIcons name="trash-can-outline" size={12} color="#aaa" style={{ marginRight: 4 }} />
+                                    <Text style={styles.deletedBadgeText}>Deleted</Text>
+                                </View>
+                            );
+                        }
                         return (
-                            <View style={[styles.statRowRight, { marginTop: 4 }]}>
-                                <MaterialCommunityIcons name="clock-outline" size={14} color={status.isExpiringSoon ? '#E02424' : '#888'} style={{ marginRight: 4 }} />
-                                <Text style={[styles.expirationText, status.isExpiringSoon && { color: '#E02424' }]}>
+                            <View style={[styles.expiryBadge, status.isExpiringSoon && styles.expiryBadgeUrgent]}>
+                                <MaterialCommunityIcons name="clock-outline" size={12} color={status.isExpiringSoon ? '#9B1C1C' : '#555'} style={{ marginRight: 4 }} />
+                                <Text style={[styles.expiryBadgeText, status.isExpiringSoon && styles.expiryBadgeTextUrgent]}>
                                     {status.text}
                                 </Text>
                             </View>
@@ -451,6 +487,7 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
                         <IconButton
                             icon="content-copy"
                             size={24}
+                            disabled={!!activeLink?.deleted_at}
                             onPress={() => {
                                 const url = process.env.EXPO_PUBLIC_VIEWER_URL
                                     ? `${process.env.EXPO_PUBLIC_VIEWER_URL}/p/${activeLink?.short_code}`
@@ -459,17 +496,18 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
                                 onCopyLink({ ...activeLink, shareUrl: url } as any);
                             }}
                         />
-                        <Text variant="labelSmall">Copy</Text>
+                        <Text variant="labelSmall" style={activeLink?.deleted_at ? { color: '#ccc' } : undefined}>Copy</Text>
                     </View>
                     <View style={styles.contextActionItem}>
                         <IconButton
                             icon="share-variant"
                             size={24}
+                            disabled={!!activeLink?.deleted_at}
                             onPress={() => {
                                 if (activeLink) handleShareLink(activeLink);
                             }}
                         />
-                        <Text variant="labelSmall">Share</Text>
+                        <Text variant="labelSmall" style={activeLink?.deleted_at ? { color: '#ccc' } : undefined}>Share</Text>
                     </View>
                     <View style={styles.contextActionItem}>
                         <IconButton
@@ -489,15 +527,16 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
                 {/* Bottom Row: Settings */}
                 <TouchableOpacity
                     style={styles.contextVerticalItem}
+                    disabled={!!activeLink?.deleted_at}
                     onPress={() => {
                         if (activeLink) {
                             closeContextMenu();
-                            onOpenSettings(activeLink);
+                            onOpenSettings(activeLink, activeItemLayout ?? undefined);
                         }
                     }}
                 >
-                    <MaterialCommunityIcons name="cog-outline" size={24} color="#333" />
-                    <Text style={styles.contextVerticalText}>Edit Settings</Text>
+                    <MaterialCommunityIcons name="cog-outline" size={24} color={activeLink?.deleted_at ? '#ccc' : '#333'} />
+                    <Text style={[styles.contextVerticalText, activeLink?.deleted_at && { color: '#ccc' }]}>Edit Settings</Text>
                 </TouchableOpacity>
             </Animated.View>
         );
@@ -667,9 +706,45 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
     },
-    expirationText: {
+    expiryBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F3F4F6',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 12,
+    },
+    expiryBadgeUrgent: {
+        backgroundColor: '#FDF2F2',
+    },
+    expiryBadgeText: {
         fontSize: 12,
-        color: '#888',
+        fontWeight: '500',
+        color: '#555',
+    },
+    expiryBadgeTextUrgent: {
+        color: '#9B1C1C',
+    },
+    deletedBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F3F4F6',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 12,
+    },
+    deletedBadgeText: {
+        fontSize: 12,
+        fontWeight: '500',
+        color: '#aaa',
+    },
+    itemContainerDeleted: {
+        opacity: 0.6,
+    },
+    thumbnailContainerDeleted: {
+        backgroundColor: '#f8f8f8',
+        shadowOpacity: 0,
+        elevation: 0,
     },
     viewChip: {
         height: 24,

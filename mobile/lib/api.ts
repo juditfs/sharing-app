@@ -64,6 +64,7 @@ export interface LinkItem {
     allow_download: boolean;
     share_text: string;
     expires_at: string | null;
+    deleted_at: string | null; // Set by cleanup-expired cron job when files are removed
     encryption_key?: string; // Flattened from link_secrets
 }
 

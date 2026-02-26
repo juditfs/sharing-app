@@ -10,6 +10,7 @@
     "test": "jest"
   },
   "dependencies": {
+    "@expo/config-plugins": "^54.0.4",
     "@noble/ciphers": "^2.1.1",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-native-community/datetimepicker": "^8.6.0",
@@ -31,12 +32,13 @@
     "react-native-modal-datetime-picker": "^18.0.0",
     "react-native-paper": "^5.15.0",
     "react-native-safe-area-context": "^5.6.2",
-    "react-native-url-polyfill": "^3.0.0"
+    "react-native-url-polyfill": "^3.0.0",
+    "xcode": "^3.0.1"
   },
   "devDependencies": {
     "@testing-library/react-native": "^13.3.3",
     "@types/jest": "^29.5.14",
-    "@types/node": "^25.0.9",
+    "@types/node": "^25.3.0",
     "@types/react": "~19.1.0",
     "babel-preset-expo": "^54.0.10",
     "jest": "^29.7.0",
