@@ -117,9 +117,16 @@ export async function getSession() {
     return session;
 }
 
-export function isAnonymousSession(session: Awaited<ReturnType<typeof getSession>>) {
-    if (!session) return false;
-    // Supabase sets is_anonymous in the JWT for anonymous users
-    const payload = session.user?.app_metadata;
-    return payload?.provider === undefined && session.user?.email === undefined;
+export function isAnonymousSession(session: any) {
+    if (!session?.user) return false;
+    // New Supabase versions provide is_anonymous directly
+    if (session.user.is_anonymous !== undefined) {
+        return session.user.is_anonymous;
+    }
+    // Fallback for older sessions or specific metadata
+    const payload = session.user.app_metadata;
+    return (
+        payload?.provider === 'anonymous' ||
+        (payload?.provider === undefined && session.user.email === undefined)
+    );
 }

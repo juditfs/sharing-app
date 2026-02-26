@@ -4,11 +4,11 @@ import { StatusBar } from 'expo-status-bar';
 import * as ImagePicker from 'expo-image-picker';
 import * as Clipboard from 'expo-clipboard';
 import { BlurView } from 'expo-blur';
-import { Provider as PaperProvider, Button, Text, ActivityIndicator, Snackbar } from 'react-native-paper';
+import { Provider as PaperProvider, Button, Text, ActivityIndicator, Snackbar, Menu, Avatar, IconButton } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-import { Platform, AppState, AppStateStatus } from 'react-native';
-import { getSession, isAnonymousSession, signOut, prepareMigration, completeMigration } from './lib/auth';
+import { AppState, AppStateStatus, Platform } from 'react-native';
+import { getSession, isAnonymousSession, signOut } from './lib/auth';
 import LoginScreen from './screens/LoginScreen';
 import { handlePhotoError } from './lib/errorHandling';
 import { processAndUploadPhoto } from './lib/photoWorkflow';
@@ -24,11 +24,14 @@ export default function App() {
   const [sessionReady, setSessionReady] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const [isAnon, setIsAnon] = useState(false);
-  const [migrationCode, setMigrationCode] = useState<string | null>(null);
   const [view, setView] = useState<'upload' | 'success' | 'dashboard'>('upload');
+  const [showDeleted, setShowDeleted] = useState(false);
+  const [overflowMenuVisible, setOverflowMenuVisible] = useState(false);
 
   // Navigation state helper
   const [hasLinks, setHasLinks] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [avatarMenuVisible, setAvatarMenuVisible] = useState(false);
 
   // Toast state
   const [toastVisible, setToastVisible] = useState(false);
@@ -60,6 +63,7 @@ export default function App() {
         const anon = isAnonymousSession(session);
         setIsAnon(anon);
         setSessionReady(true);
+        setUserEmail(session.user?.email ?? null);
         console.log('Session ready, anonymous:', anon);
 
         // Check for existing links to determine home screen
@@ -251,29 +255,10 @@ export default function App() {
     try {
       const session = await getSession();
 
-      // If we have a pending migration, complete it now that we are signed in
-      if (migrationCode) {
-        try {
-          await completeMigration(migrationCode);
-          Alert.alert('Success', 'Your links have been backed up!');
-          setMigrationCode(null);
-        } catch (migErr: any) {
-          console.error('Migration completion failed:', migErr);
-          Alert.alert(
-            'Backup Failed',
-            'You are signed in, but your links couldn\'t be moved. Sign out and try "Back up with Apple" again to retry.',
-          );
-          // Keep migrationCode: user is now authenticated (non-anon), so they can't
-          // call prepare_migration() again. However clearing it was incorrect —
-          // the code may still be valid (e.g. transient network error). Retain it
-          // so a future sign-in attempt (after sign-out + re-backup) can retry.
-          // The DB code expires in 5 min, so stale codes will fail gracefully.
-        }
-      }
-
       const anon = isAnonymousSession(session);
       setIsAnon(anon);
       setSessionReady(true);
+      setUserEmail(session?.user?.email ?? null);
       const links = await getUserLinks();
       if (links.length > 0) {
         setHasLinks(true);
@@ -289,27 +274,12 @@ export default function App() {
     }
   };
 
-  const handleBackUpLinks = async () => {
-    try {
-      setLoading(true);
-      // Step 1: Prepare migration while still anonymous
-      const code = await prepareMigration();
-      setMigrationCode(code);
-
-      // Step 2: Show login screen to authenticate (completes in handleSignedIn)
-      setShowLogin(true);
-    } catch (err: any) {
-      Alert.alert('Error', err?.message ?? 'Could not start backup. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleSignOut = async () => {
     try {
       await signOut();
       setSessionReady(false);
       setIsAnon(false);
+      setUserEmail(null);
       setShowLogin(true);
     } catch (err: any) {
       Alert.alert('Error', err?.message ?? 'Sign out failed.');
@@ -368,29 +338,69 @@ export default function App() {
 
           {/* Header Area */}
           <View style={styles.header}>
-            {/* ... rest of header ... */}
-            {(view !== 'dashboard' && hasLinks) ? (
-              <Button mode="text" icon="arrow-left" onPress={handleBackToHome} compact>
-                Back to Your Shares
-              </Button>
-            ) : null}
+            <View style={styles.headerLeftActions}>
+              <Menu
+                visible={avatarMenuVisible}
+                onDismiss={() => setAvatarMenuVisible(false)}
+                anchor={
+                  <TouchableWithoutFeedback onPress={() => setAvatarMenuVisible(true)}>
+                    <View style={styles.avatarButtonOutline}>
+                      <Avatar.Text
+                        size={32}
+                        label={userEmail ? userEmail[0].toUpperCase() : '?'}
+                        style={styles.avatar}
+                      />
+                    </View>
+                  </TouchableWithoutFeedback>
+                }
+              >
+                <Menu.Item
+                  leadingIcon="email-outline"
+                  title={isAnon ? 'Guest User' : (userEmail ?? 'Signed in')}
+                  disabled
+                />
+                <Menu.Item
+                  leadingIcon={isAnon ? "login" : "logout"}
+                  title={isAnon ? "Sign In" : "Sign Out"}
+                  onPress={() => { setAvatarMenuVisible(false); handleSignOut(); }}
+                />
+              </Menu>
+
+              {(view !== 'dashboard' && hasLinks) ? (
+                <Button mode="text" icon="arrow-left" onPress={handleBackToHome} compact style={{ marginLeft: 8 }}>
+                  Back
+                </Button>
+              ) : null}
+            </View>
 
             <View style={{ flex: 1 }} />
 
-            <Button mode="text" onPress={handleSignOut} compact>
-              Sign Out
-            </Button>
-          </View>
-
-          {/* Migration nudge: shown for anonymous users on iOS */}
-          {isAnon && Platform.OS === 'ios' && (
-            <View style={styles.nudgeBanner}>
-              <Text style={styles.nudgeText}>Your links are stored on this device only.</Text>
-              <Button mode="text" compact onPress={handleBackUpLinks} style={styles.nudgeButton}>
-                Back up with Apple
-              </Button>
+            <View style={styles.headerRightActions}>
+              {view === 'dashboard' && (
+                <Menu
+                  visible={overflowMenuVisible}
+                  onDismiss={() => setOverflowMenuVisible(false)}
+                  anchor={
+                    <TouchableWithoutFeedback onPress={() => setOverflowMenuVisible(true)}>
+                      <View style={styles.overflowMenuButtonOutline}>
+                        <MaterialCommunityIcons name="dots-horizontal" size={24} color="#333" />
+                      </View>
+                    </TouchableWithoutFeedback>
+                  }
+                  anchorPosition="bottom"
+                >
+                  <Menu.Item
+                    leadingIcon={showDeleted ? 'eye-off-outline' : 'eye-outline'}
+                    title={showDeleted ? 'Hide deleted' : 'Show deleted'}
+                    onPress={() => {
+                      setShowDeleted(v => !v);
+                      setOverflowMenuVisible(false);
+                    }}
+                  />
+                </Menu>
+              )}
             </View>
-          )}
+          </View>
 
           <View style={[styles.content, view !== 'dashboard' && { justifyContent: 'center' }]}>
             {view === 'upload' && (
@@ -436,6 +446,7 @@ export default function App() {
                 onTakePhoto={handleTakePhoto}
                 onPickPhoto={handlePickPhoto}
                 onLinkPress={handleOpenLinkDetails}
+                showDeleted={showDeleted}
                 onRefreshNeeded={(refreshFn) => {
                   dashboardRefreshRef.current = refreshFn;
                   if (pendingDashboardRefreshRef.current) {
@@ -513,10 +524,21 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 50, // Status bar path
+    paddingTop: 70, // Increased more significantly to make it visible
     paddingBottom: 10,
     width: '100%',
+  },
+  headerLeftActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  headerRightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   content: {
     flex: 1,
@@ -604,20 +626,119 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#333',
   },
-  nudgeBanner: {
+  // --- Avatar ---
+  avatarButtonOutline: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
+  },
+  avatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#6366F1',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitials: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  overflowMenuButtonOutline: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
+  },
+  // --- Avatar dropdown menu ---
+  avatarMenu: {
+    position: 'absolute',
+    top: 100,
+    left: 16,
+    width: 240,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
+    elevation: 8,
+    zIndex: 100,
+    overflow: 'hidden',
+  },
+  avatarMenuHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#F0F0FF',
-    paddingHorizontal: 16,
-    paddingVertical: 6,
+    padding: 16,
+    gap: 12,
   },
-  nudgeText: {
+  avatarLarge: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#6366F1',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarLargeInitials: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  avatarMenuEmail: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111',
+  },
+  avatarMenuSubtitle: {
     fontSize: 12,
-    color: '#555',
-    flex: 1,
+    color: '#888',
+    marginTop: 2,
   },
-  nudgeButton: {
-    marginLeft: 8,
+  avatarMenuDivider: {
+    height: 1,
+    backgroundColor: '#F0F0F0',
+    marginHorizontal: 0,
+  },
+  avatarMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
+  },
+  avatarMenuItemText: {
+    fontSize: 15,
+    color: '#333',
+    fontWeight: '500',
   },
 });
+

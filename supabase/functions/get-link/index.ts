@@ -13,8 +13,9 @@ const corsHeaders = {
 // Resets on cold start; acceptable at current scale.
 // Upgrade to Redis-backed for production at scale.
 //
-// IP source: x-forwarded-for is set by Supabase's infrastructure/edge layer,
-// not by the client directly, so header spoofing is mitigated by the platform.
+// IP source: x-forwarded-for is usually set by the platform edge layer.
+// Some server-to-server callers may not include it; handle that case explicitly
+// to avoid collapsing all traffic into one "unknown" bucket.
 const IP_LIMIT_PER_MIN = 30;        // max requests per IP per minute
 const CODE_IP_LIMIT_PER_MIN = 5;    // max requests per IP+shortCode per minute
 const WINDOW_MS = 60_000;
@@ -47,6 +48,14 @@ function maybeSweep() {
 }
 // ---------------------------------
 
+function getClientIp(req: Request): string | null {
+    const forwarded = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    const realIp = req.headers.get('x-real-ip')?.trim()
+    const cfIp = req.headers.get('cf-connecting-ip')?.trim()
+    const ip = forwarded || realIp || cfIp || ''
+    return ip.length > 0 ? ip : null
+}
+
 type ActionType = 'metadata' | 'key'
 
 interface GetLinkRequest {
@@ -76,9 +85,12 @@ serve(async (req) => {
     }
 
     // Rate limiting — runs before any DB work
-    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+    const ip = getClientIp(req);
     maybeSweep();
-    if (isRateLimited(`ip:${ip}`, IP_LIMIT_PER_MIN)) {
+    // Only apply global IP limit when we have a concrete client IP.
+    // For server-to-server callers without forwarded IPs, applying this would
+    // incorrectly group all requests into a single throttled bucket.
+    if (ip && isRateLimited(`ip:${ip}`, IP_LIMIT_PER_MIN)) {
         return new Response(
             JSON.stringify({ error: 'Too many requests' }),
             { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -110,8 +122,10 @@ serve(async (req) => {
             )
         }
 
-        // Per shortCode+IP rate limit — catches targeted enumeration
-        if (isRateLimited(`code:${shortCode}:${ip}`, CODE_IP_LIMIT_PER_MIN)) {
+        // Per shortCode+client rate limit — catches targeted enumeration.
+        // Fall back to a user-agent key when IP is unavailable.
+        const clientKey = ip || `ua:${(req.headers.get('user-agent') || 'unknown').slice(0, 80)}`
+        if (isRateLimited(`code:${shortCode}:${clientKey}`, CODE_IP_LIMIT_PER_MIN)) {
             return new Response(
                 JSON.stringify({ error: 'Too many requests' }),
                 { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

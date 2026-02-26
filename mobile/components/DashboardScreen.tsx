@@ -98,9 +98,10 @@ interface DashboardScreenProps {
     onPickPhoto: () => void;
     onLinkPress: (link: LinkItem, layout?: LayoutRectangle) => void;
     onRefreshNeeded?: (refreshFn: () => void) => void;
+    showDeleted: boolean;
 }
 
-export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPickPhoto, onLinkPress, onRefreshNeeded }: DashboardScreenProps) {
+export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPickPhoto, onLinkPress, onRefreshNeeded, showDeleted }: DashboardScreenProps) {
     const [links, setLinks] = useState<LinkItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -565,7 +566,7 @@ export function DashboardScreen({ onOpenSettings, onCopyLink, onTakePhoto, onPic
             <Text variant="displaySmall" style={styles.headerTitle}>Your Shares</Text>
 
             <SectionList
-                sections={groupLinksByDate(links)}
+                sections={groupLinksByDate(showDeleted ? links : links.filter(l => !l.deleted_at))}
                 renderItem={renderItem}
                 renderSectionHeader={({ section: { title } }) => (
                     <Text style={styles.sectionHeader}>{title}</Text>
