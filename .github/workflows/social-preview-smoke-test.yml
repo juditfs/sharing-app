@@ -1,0 +1,29 @@
+# GitHub Action: Social Preview Smoke Test
+# Runs on every push or PR to main to ensure social previews are active.
+
+name: Social Preview Smoke Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  smoke-test:
+    name: Run Social Preview Smoke Test
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Run Smoke Test Script
+      env:
+        PROJECT_REF: ${{ vars.PROJECT_REF || 'ndbqasanctkwagyinfag' }}
+        VIEWER_URL: ${{ vars.VIEWER_URL || 'https://viewer-rho-seven.vercel.app' }}
+        SMOKE_TEST_SHORT_CODE: ${{ secrets.SMOKE_TEST_SHORT_CODE }}
+      run: |
+        chmod +x scripts/smoke-social-preview.sh
+        ./scripts/smoke-social-preview.sh
