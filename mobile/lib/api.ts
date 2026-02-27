@@ -12,7 +12,25 @@ export async function updateLink(
 ): Promise<void> {
     console.log('Updating link:', shortCode, updates);
 
+    // Keep edge-function auth consistent with create-link:
+    // ensure we send a fresh user JWT, not a stale/missing token.
+    let accessToken: string | null = null;
+    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+    if (!refreshError && refreshData.session?.access_token) {
+        accessToken = refreshData.session.access_token;
+    } else {
+        const { data: sessionData } = await supabase.auth.getSession();
+        accessToken = sessionData.session?.access_token ?? null;
+    }
+
+    if (!accessToken) {
+        throw new Error('No active session. Please sign in again.');
+    }
+
     const { error, data } = await supabase.functions.invoke('update-link', {
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+        },
         body: {
             shortCode,
             updates

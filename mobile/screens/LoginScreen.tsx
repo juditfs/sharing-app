@@ -78,16 +78,18 @@ export default function LoginScreen({ onSignedIn }: LoginScreenProps) {
     };
 
     const handleSendCode = async () => {
-        if (!email.includes('@')) {
+        const normalizedEmail = email.trim().toLowerCase();
+        if (!normalizedEmail.includes('@')) {
             Alert.alert('Invalid Email', 'Please enter a valid email address.');
             return;
         }
         setLoading(true);
         try {
-            await signInWithEmailOtp(email);
+            await signInWithEmailOtp(normalizedEmail);
             startCooldown();
             setStep('code-entry');
         } catch (err: any) {
+            console.error('send-code failed:', err);
             const msg = err?.message?.toLowerCase() ?? '';
             if (msg.includes('for security purposes')) {
                 Alert.alert('Wait', 'Wait a moment before requesting a new code (60s cooldown).');
@@ -96,7 +98,7 @@ export default function LoginScreen({ onSignedIn }: LoginScreenProps) {
             } else if (msg.includes('too many requests') || err?.status === 429) {
                 Alert.alert('Wait', 'Too many attempts. Wait a few minutes and try again.');
             } else {
-                Alert.alert('Error', 'Failed to send code. Please try again.');
+                Alert.alert('Error', err?.message ?? 'Failed to send code. Please try again.');
             }
         } finally {
             setLoading(false);
@@ -110,7 +112,7 @@ export default function LoginScreen({ onSignedIn }: LoginScreenProps) {
         }
         setLoading(true);
         try {
-            await verifyEmailOtp(email, code);
+            await verifyEmailOtp(email.trim().toLowerCase(), code.trim());
             onSignedIn();
         } catch {
             Alert.alert('Verification Failed', 'The code was invalid or has expired. Please request a new one.');
